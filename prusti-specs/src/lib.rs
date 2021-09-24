@@ -12,6 +12,7 @@ pub mod specifications;
 use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::spanned::Spanned;
+use syn::visit_mut::VisitMut;
 use std::convert::TryInto;
 
 use specifications::untyped;
@@ -539,5 +540,113 @@ pub fn predicate(tokens: TokenStream) -> TokenStream {
         #[prusti::trusted]
         #[prusti::pred_spec_id_ref = #spec_id_str]
         #cleaned_fn
+    }
+}
+
+pub fn liquid(tokens: TokenStream) -> TokenStream {
+    //let tokens_span = tokens.span();
+    // emit a custom error to the user instead of a parse error
+    let mut liquid_fn: syn::ItemFn = handle_result!(
+        syn::parse2(tokens)
+            /*.map_err(|e| syn::Error::new(
+                e.span(),
+                "`liquid!` can only be used on function definitions. it supports no attributes."
+            ))*/
+    );
+    LiqudReplacer.visit_item_fn_mut(&mut liquid_fn);
+    //println!("{:?}", pred_fn.fn_sig);
+    liquid_fn.into_token_stream().into()
+    /*
+    LiqudReplacer.visit_expr_binary_mut(pred_fn);
+
+    //let mut rewriter = rewriter::AstRewriter::new();
+    //let spec_id = rewriter.generate_spec_id();
+    //let assertion = handle_result!(rewriter.parse_assertion(spec_id, pred_fn.body));
+
+    let vis = match pred_fn.visibility {
+        Some(vis) => vis.to_token_stream(),
+        None => TokenStream::new(),
+    };
+
+    let mut lt_rt = syn::PathArguments::None;
+    if let syn::ReturnType::Type(_, ref mut t) = pred_fn.fn_sig.output {
+        if let syn::Type::Path(ref mut tp) = **t {
+            std::mem::swap(&mut lt_rt, &mut (*tp).path.segments[0].arguments);
+            //println!("\nXX: {:?}", tp.path.segments[0]);
+            
+            //*t = Box::new((**t).clone());
+        }
+    }
+
+    let mut post = TokenStream::new();
+    if let syn::PathArguments::AngleBracketed(abga) = lt_rt {
+        if let syn::GenericArgument::Const(syn::Expr::Block(ex_bl)) = &abga.args[0] {
+            println!("\nX: {:?}", ex_bl.block.stmts[0]);
+            post = ex_bl.block.stmts[0].to_token_stream();
+            //println!("\nX: {:?}", ex_bl.block.stmts[0].to_token_stream());
+        }
+    }
+    //println!("\nX: {:?}", lt_rt);
+
+    let sig = pred_fn.fn_sig.to_token_stream();
+    let body = pred_fn.body;
+    println!("\nA: {:?}", sig);
+    parse_quote_spanned! {tokens_span =>
+        #[ensures( #post )]
+        #vis #sig {
+            #body
+        }
+    }
+    */*/
+}
+
+
+struct LiqudReplacer;
+impl VisitMut for LiqudReplacer {
+    fn visit_fn_arg_mut(&mut self, i: &mut syn::FnArg) {
+        println!("\nArg: {:?}", i);
+        let mut lh = LiqudHider { lt_block : None };
+        lh.visit_fn_arg_mut(i);
+        if let Some(blk) = lh.lt_block {
+            
+        }
+    }
+    fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
+        println!("\nRT: {:?}", i);
+        let mut lh = LiqudHider { lt_block : None };
+        lh.visit_return_type_mut(i);
+        if let Some(blk) = lh.lt_block {
+            
+        }
+    }
+}
+
+struct LiqudHider { lt_block: Option<syn::ExprBlock>, }
+impl VisitMut for LiqudHider {
+    fn visit_path_segment_mut(&mut self, i: &mut syn::PathSegment) {
+        // Does type have <...> after it?
+        if let syn::PathArguments::AngleBracketed(ref mut gargs) = i.arguments {
+            // Is it more than just an empty <> ?
+            if gargs.args.len() > 0 {
+                // Is the last generic of the form <..., ..., {...}> ?
+                if let syn::GenericArgument::Const(syn::Expr::Block(_)) = &gargs.args[gargs.args.len()-1] {
+                    // Remove Liquid Type from actual code
+                    if let syn::punctuated::Pair::End(syn::GenericArgument::Const(syn::Expr::Block(blk))) = gargs.args.pop().unwrap() {
+                        // Save liquid type to be checked
+                        self.lt_block = Some(blk)
+                    } else { unreachable!() }
+                }
+            }
+        }
+        //println!("\nPS: {:?}", i);
+    }
+}
+
+struct LiqudRepl { ident: &str, }
+impl VisitMut for LiqudRepl {
+    fn visit_ident_mut(&mut self, i: &mut Ident) {
+        // Check if matches _
+
+        //println!("\nPS: {:?}", i);
     }
 }

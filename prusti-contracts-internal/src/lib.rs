@@ -57,3 +57,8 @@ pub fn extern_spec(attr: TokenStream, tokens: TokenStream) -> TokenStream {
 pub fn predicate(tokens: TokenStream) -> TokenStream {
     prusti_specs::predicate(tokens.into()).into()
 }
+
+#[proc_macro]
+pub fn liquid(tokens: TokenStream) -> TokenStream {
+    prusti_specs::liquid(tokens.into()).into()
+}
