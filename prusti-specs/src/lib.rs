@@ -544,7 +544,6 @@ pub fn predicate(tokens: TokenStream) -> TokenStream {
 }
 
 pub fn liquid(tokens: TokenStream) -> TokenStream {
-    //let tokens_span = tokens.span();
     // emit a custom error to the user instead of a parse error
     let mut liquid_fn: syn::ItemFn = handle_result!(
         syn::parse2(tokens)
@@ -553,70 +552,73 @@ pub fn liquid(tokens: TokenStream) -> TokenStream {
                 "`liquid!` can only be used on function definitions. it supports no attributes."
             ))*/
     );
-    LiqudReplacer.visit_item_fn_mut(&mut liquid_fn);
-    //println!("{:?}", pred_fn.fn_sig);
+    //println!("{:?}", liquid_fn.block);
+    let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
+    lr.visit_item_fn_mut(&mut liquid_fn);
+    liquid_fn.attrs.extend(lr.preconds.iter().map(to_precond));
+    liquid_fn.attrs.extend(lr.postconds.iter().map(to_postcond));
     liquid_fn.into_token_stream().into()
-    /*
-    LiqudReplacer.visit_expr_binary_mut(pred_fn);
-
-    //let mut rewriter = rewriter::AstRewriter::new();
-    //let spec_id = rewriter.generate_spec_id();
-    //let assertion = handle_result!(rewriter.parse_assertion(spec_id, pred_fn.body));
-
-    let vis = match pred_fn.visibility {
-        Some(vis) => vis.to_token_stream(),
-        None => TokenStream::new(),
-    };
-
-    let mut lt_rt = syn::PathArguments::None;
-    if let syn::ReturnType::Type(_, ref mut t) = pred_fn.fn_sig.output {
-        if let syn::Type::Path(ref mut tp) = **t {
-            std::mem::swap(&mut lt_rt, &mut (*tp).path.segments[0].arguments);
-            //println!("\nXX: {:?}", tp.path.segments[0]);
-            
-            //*t = Box::new((**t).clone());
-        }
+}
+fn to_precond(blk: &syn::ExprBlock) -> syn::Attribute {
+    if blk.block.stmts.len() == 1 {
+        let stmt = &blk.block.stmts[0];
+        syn::parse_quote! { #[requires( #stmt )] }
+    } else {
+        syn::parse_quote! { #[requires( #blk )] }
     }
-
-    let mut post = TokenStream::new();
-    if let syn::PathArguments::AngleBracketed(abga) = lt_rt {
-        if let syn::GenericArgument::Const(syn::Expr::Block(ex_bl)) = &abga.args[0] {
-            println!("\nX: {:?}", ex_bl.block.stmts[0]);
-            post = ex_bl.block.stmts[0].to_token_stream();
-            //println!("\nX: {:?}", ex_bl.block.stmts[0].to_token_stream());
-        }
+}
+fn to_postcond(blk: &syn::ExprBlock) -> syn::Attribute {
+    if blk.block.stmts.len() == 1 {
+        let stmt = &blk.block.stmts[0];
+        syn::parse_quote! { #[ensures( #stmt )] }
+    } else {
+        syn::parse_quote! { #[ensures( #blk )] }
     }
-    //println!("\nX: {:?}", lt_rt);
-
-    let sig = pred_fn.fn_sig.to_token_stream();
-    let body = pred_fn.body;
-    println!("\nA: {:?}", sig);
-    parse_quote_spanned! {tokens_span =>
-        #[ensures( #post )]
-        #vis #sig {
-            #body
-        }
-    }
-    */*/
 }
 
-
-struct LiqudReplacer;
+struct LiqudReplacer { preconds: Vec<syn::ExprBlock>, postconds: Vec<syn::ExprBlock> }
 impl VisitMut for LiqudReplacer {
     fn visit_fn_arg_mut(&mut self, i: &mut syn::FnArg) {
-        println!("\nArg: {:?}", i);
         let mut lh = LiqudHider { lt_block : None };
         lh.visit_fn_arg_mut(i);
-        if let Some(blk) = lh.lt_block {
-            
+        if let Some(mut blk) = lh.lt_block {
+            let mut ident = String::from("self");
+            if let syn::FnArg::Typed(arg) = i {
+                if let syn::Pat::Ident(ref idt) = *arg.pat {
+                    ident = idt.ident.to_string();
+                } else { unreachable!("Handle other arg names?") }
+            }
+            let mut lr = LiqudRepl { ident };
+            lr.visit_expr_block_mut(&mut blk);
+            self.preconds.push(blk);
         }
     }
     fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
-        println!("\nRT: {:?}", i);
         let mut lh = LiqudHider { lt_block : None };
         lh.visit_return_type_mut(i);
-        if let Some(blk) = lh.lt_block {
-            
+        if let Some(mut blk) = lh.lt_block {
+            let mut lr = LiqudRepl { ident : String::from("result") };
+            lr.visit_expr_block_mut(&mut blk);
+            self.postconds.push(blk);
+        }
+    }
+    fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
+        if let syn::Expr::Closure(ref mut c) = i {
+            let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
+            for j in &mut c.inputs.iter_mut() {
+                lr.visit_pat_mut(j);
+            }
+            lr.visit_return_type_mut(&mut c.output);
+            println!("\n{:?}\n", c);
+            let mcr: syn::ExprMacro = syn::parse_quote! { closure!(ensures(result == i * 2), #c) };
+            *i = syn::Expr::Macro(
+                syn::parse_quote! { 
+                    closure!(
+                        ensures(result == i * 2), // TODO
+                        #c
+                    )
+                }
+            );
         }
     }
 }
@@ -634,19 +636,19 @@ impl VisitMut for LiqudHider {
                     if let syn::punctuated::Pair::End(syn::GenericArgument::Const(syn::Expr::Block(blk))) = gargs.args.pop().unwrap() {
                         // Save liquid type to be checked
                         self.lt_block = Some(blk)
+                        // TODO: Maybe replace <..., ..., {{...}}> with <..., ..., {...}> so that the latter can be expressed 
+                        //if blk.block.stmts.len() == 1 && let syn::Stmt::Expr(syn::Expr::Block(_)) = blk.block.stmts[0]
                     } else { unreachable!() }
                 }
             }
         }
-        //println!("\nPS: {:?}", i);
     }
 }
 
-struct LiqudRepl { ident: &str, }
+struct LiqudRepl { ident: String, }
 impl VisitMut for LiqudRepl {
-    fn visit_ident_mut(&mut self, i: &mut Ident) {
-        // Check if matches _
-
-        //println!("\nPS: {:?}", i);
+    fn visit_ident_mut(&mut self, i: &mut syn::Ident) {
+        // Check if Ident matches __
+        if i.to_string() == "__" { *i = syn::Ident::new(&self.ident, i.span()); }
     }
 }
