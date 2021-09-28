@@ -60,7 +60,7 @@ pub fn predicate(_attr: TokenStream, tokens: TokenStream) -> TokenStream {
     tokens
 }
 
-#[proc_macro_attribute]
-pub fn liquid(_attr: TokenStream, tokens: TokenStream) -> TokenStream {
-    tokens
+#[proc_macro]
+pub fn dep(tokens: TokenStream) -> TokenStream {
+    prusti_specs::dep(tokens.into()).into()
 }

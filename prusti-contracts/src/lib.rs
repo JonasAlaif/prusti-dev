@@ -36,7 +36,7 @@ mod private {
     /// of just Rust expressions.
     pub use prusti_contracts_impl::predicate;
 
-    pub use prusti_contracts_impl::liquid;
+    pub use prusti_contracts_impl::dep;
 }
 
 #[cfg(feature = "prusti")]
@@ -75,7 +75,7 @@ mod private {
     /// of just Rust expressions.
     pub use prusti_contracts_internal::predicate;
 
-    pub use prusti_contracts_internal::liquid;
+    pub use prusti_contracts_internal::dep;
 }
 
 

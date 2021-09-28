@@ -543,56 +543,69 @@ pub fn predicate(tokens: TokenStream) -> TokenStream {
     }
 }
 
-pub fn liquid(tokens: TokenStream) -> TokenStream {
-    // emit a custom error to the user instead of a parse error
-    let mut liquid_fn: syn::ItemFn = handle_result!(
+pub fn dep(tokens: TokenStream) -> TokenStream {
+    let mut file: syn::File = handle_result!(
         syn::parse2(tokens)
-            /*.map_err(|e| syn::Error::new(
-                e.span(),
-                "`liquid!` can only be used on function definitions. it supports no attributes."
-            ))*/
     );
-    //println!("{:?}", liquid_fn.block);
-    let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
-    lr.visit_item_fn_mut(&mut liquid_fn);
-    liquid_fn.attrs.extend(lr.preconds.iter().map(to_precond));
-    liquid_fn.attrs.extend(lr.postconds.iter().map(to_postcond));
-    liquid_fn.into_token_stream().into()
+    FileVisitor.visit_file_mut(&mut file);
+    file.into_token_stream()
 }
-fn to_precond(blk: &syn::ExprBlock) -> syn::Attribute {
+fn to_req_attr(blk: &syn::ExprBlock) -> syn::Attribute {
+    let ts = to_ts(blk);
+    syn::parse_quote! { #[requires( #ts )] }
+}
+fn to_ens_attr(blk: &syn::ExprBlock) -> syn::Attribute {
+    let ts = to_ts(blk);
+    syn::parse_quote! { #[ensures( #ts )] }
+}
+fn to_req_arg(blk: &syn::ExprBlock) -> TokenStream {
+    let ts = to_ts(blk);
+    syn::parse_quote! { requires( #ts ), }
+}
+fn to_ens_arg(blk: &syn::ExprBlock) -> TokenStream {
+    let ts = to_ts(blk);
+    syn::parse_quote! { ensures( #ts ), }
+}
+
+fn to_ts(blk: &syn::ExprBlock) -> TokenStream {
+    // Remove curly braces if not required
     if blk.block.stmts.len() == 1 {
-        let stmt = &blk.block.stmts[0];
-        syn::parse_quote! { #[requires( #stmt )] }
+        // {...}
+        (&blk.block.stmts[0]).into_token_stream()
     } else {
-        syn::parse_quote! { #[requires( #blk )] }
+        // {...; ...}
+        blk.into_token_stream()
     }
 }
-fn to_postcond(blk: &syn::ExprBlock) -> syn::Attribute {
-    if blk.block.stmts.len() == 1 {
-        let stmt = &blk.block.stmts[0];
-        syn::parse_quote! { #[ensures( #stmt )] }
-    } else {
-        syn::parse_quote! { #[ensures( #blk )] }
+
+struct FileVisitor;
+impl VisitMut for FileVisitor {
+    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
+        //println!("{:?}", i.block);
+        let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
+        lr.visit_item_fn_mut(i);
+        i.attrs.extend(lr.preconds.iter().map(to_req_attr));
+        i.attrs.extend(lr.postconds.iter().map(to_ens_attr));
     }
 }
 
 struct LiqudReplacer { preconds: Vec<syn::ExprBlock>, postconds: Vec<syn::ExprBlock> }
 impl VisitMut for LiqudReplacer {
-    fn visit_fn_arg_mut(&mut self, i: &mut syn::FnArg) {
+
+    fn visit_pat_type_mut(&mut self, i: &mut syn::PatType) {
         let mut lh = LiqudHider { lt_block : None };
-        lh.visit_fn_arg_mut(i);
+        lh.visit_pat_type_mut(i);
         if let Some(mut blk) = lh.lt_block {
-            let mut ident = String::from("self");
-            if let syn::FnArg::Typed(arg) = i {
-                if let syn::Pat::Ident(ref idt) = *arg.pat {
-                    ident = idt.ident.to_string();
-                } else { unreachable!("Handle other arg names?") }
-            }
-            let mut lr = LiqudRepl { ident };
-            lr.visit_expr_block_mut(&mut blk);
-            self.preconds.push(blk);
+            if let syn::Pat::Ident(ref idt) = *i.pat {
+                let mut lr = LiqudRepl { ident: idt.ident.to_string() };
+                lr.visit_expr_block_mut(&mut blk);
+                self.preconds.push(blk);
+            } else { unreachable!("Handle other arg names?") }
         }
     }
+    // TODO: support dep types for self args? (LiqudRepl { ident: String::from("self") })
+    //fn visit_receiver_mut(&mut self, i: &mut syn::Receiver)
+
     fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
         let mut lh = LiqudHider { lt_block : None };
         lh.visit_return_type_mut(i);
@@ -602,6 +615,7 @@ impl VisitMut for LiqudReplacer {
             self.postconds.push(blk);
         }
     }
+    // Check for closures
     fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
         if let syn::Expr::Closure(ref mut c) = i {
             let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
@@ -609,12 +623,13 @@ impl VisitMut for LiqudReplacer {
                 lr.visit_pat_mut(j);
             }
             lr.visit_return_type_mut(&mut c.output);
-            println!("\n{:?}\n", c);
-            let mcr: syn::ExprMacro = syn::parse_quote! { closure!(ensures(result == i * 2), #c) };
+            let reqs = lr.preconds.iter().map(to_req_arg).fold(TokenStream::new(), |mut ts1, ts2| {ts1.extend(ts2); ts1} );
+            let all = lr.postconds.iter().map(to_ens_arg).fold(reqs, |mut ts1, ts2| {ts1.extend(ts2); ts1} );
+            //println!("\n{:?}\n", all);
             *i = syn::Expr::Macro(
                 syn::parse_quote! { 
                     closure!(
-                        ensures(result == i * 2), // TODO
+                        #all
                         #c
                     )
                 }
@@ -632,9 +647,9 @@ impl VisitMut for LiqudHider {
             if gargs.args.len() > 0 {
                 // Is the last generic of the form <..., ..., {...}> ?
                 if let syn::GenericArgument::Const(syn::Expr::Block(_)) = &gargs.args[gargs.args.len()-1] {
-                    // Remove Liquid Type from actual code
+                    // Remove Dep Type from actual code
                     if let syn::punctuated::Pair::End(syn::GenericArgument::Const(syn::Expr::Block(blk))) = gargs.args.pop().unwrap() {
-                        // Save liquid type to be checked
+                        // Save dep type to be checked
                         self.lt_block = Some(blk)
                         // TODO: Maybe replace <..., ..., {{...}}> with <..., ..., {...}> so that the latter can be expressed 
                         //if blk.block.stmts.len() == 1 && let syn::Stmt::Expr(syn::Expr::Block(_)) = blk.block.stmts[0]
