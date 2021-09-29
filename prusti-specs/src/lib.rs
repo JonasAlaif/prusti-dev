@@ -9,7 +9,7 @@ mod parse_closure_macro;
 mod spec_attribute_kind;
 pub mod specifications;
 
-use proc_macro2::{Span, TokenStream, TokenTree};
+use proc_macro2::{Span, TokenStream, TokenTree, token_stream::IntoIter};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
@@ -543,91 +543,102 @@ pub fn predicate(tokens: TokenStream) -> TokenStream {
     }
 }
 
-pub fn dep(tokens: TokenStream) -> TokenStream {
+pub fn prusti(tokens: TokenStream) -> TokenStream {
     let mut file: syn::File = handle_result!(
         syn::parse2(tokens)
     );
-    FileVisitor.visit_file_mut(&mut file);
+    PrustiPreprocess.visit_file_mut(&mut file);
     file.into_token_stream()
 }
-fn to_req_attr(blk: &syn::ExprBlock) -> syn::Attribute {
-    let ts = to_ts(blk);
+struct PrustiPreprocess;
+impl VisitMut for PrustiPreprocess {
+    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
+        dep(i);
+    }
+}
+
+
+
+
+fn dep(i: &mut syn::ItemFn) {
+    let mut dtf = DepTypesFinder { preconds: Vec::new(), postconds: Vec::new() };
+    dtf.visit_item_fn_mut(i);
+    i.attrs.extend(dtf.preconds.iter().map(to_req_attr));
+    i.attrs.extend(dtf.postconds.iter().map(to_ens_attr));
+}
+
+fn to_req_attr(ts: &TokenStream) -> syn::Attribute {
     syn::parse_quote! { #[requires( #ts )] }
 }
-fn to_ens_attr(blk: &syn::ExprBlock) -> syn::Attribute {
-    let ts = to_ts(blk);
+fn to_ens_attr(ts: &TokenStream) -> syn::Attribute {
     syn::parse_quote! { #[ensures( #ts )] }
 }
-fn to_req_arg(blk: &syn::ExprBlock) -> TokenStream {
-    let ts = to_ts(blk);
+fn to_req_arg(ts: &TokenStream) -> TokenStream {
     syn::parse_quote! { requires( #ts ), }
 }
-fn to_ens_arg(blk: &syn::ExprBlock) -> TokenStream {
-    let ts = to_ts(blk);
+fn to_ens_arg(ts: &TokenStream) -> TokenStream {
     syn::parse_quote! { ensures( #ts ), }
 }
-
-fn to_ts(blk: &syn::ExprBlock) -> TokenStream {
-    // Remove curly braces if not required
-    if blk.block.stmts.len() == 1 {
-        // {...}
-        (&blk.block.stmts[0]).into_token_stream()
-    } else {
-        // {...; ...}
-        blk.into_token_stream()
-    }
-}
-
-struct FileVisitor;
-impl VisitMut for FileVisitor {
-    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
-        //println!("{:?}", i.block);
-        let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
-        lr.visit_item_fn_mut(i);
-        i.attrs.extend(lr.preconds.iter().map(to_req_attr));
-        i.attrs.extend(lr.postconds.iter().map(to_ens_attr));
-    }
-}
-
-struct LiqudReplacer { preconds: Vec<syn::ExprBlock>, postconds: Vec<syn::ExprBlock> }
-impl VisitMut for LiqudReplacer {
-
-    fn visit_pat_type_mut(&mut self, i: &mut syn::PatType) {
-        let mut lh = LiqudHider { lt_block : None };
-        lh.visit_pat_type_mut(i);
-        if let Some(mut blk) = lh.lt_block {
-            if let syn::Pat::Ident(ref idt) = *i.pat {
-                let mut lr = LiqudRepl { ident: idt.ident.to_string() };
-                lr.visit_expr_block_mut(&mut blk);
-                self.preconds.push(blk);
-            } else { unreachable!("Handle other arg names?") }
+// Replace all "_" in TokenStream with arg
+fn replace_(i: IntoIter, arg: TokenStream) -> TokenStream {
+    // TODO? is this the nicest way to replace all TokenTree::Ident("_") in `i`
+    // with a the whole of `arg`? If `arg` was just one Ident then a simple
+    // map would do.
+    let mut ts = TokenStream::new();
+    for tkn in i {
+        match tkn {
+            TokenTree::Ident(ref u) if u.to_string() == "_" => {
+                // Change span to that of the "_" to get nice error reporting
+                let arg_c: TokenStream = arg.clone().into_iter().map(
+                    |mut tkn2| {tkn2.set_span(tkn.span()); tkn2}
+                ).collect();
+                ts.extend(arg_c)
+            }
+            other => ts.extend(Some(other))
         }
     }
-    // TODO: support dep types for self args? (LiqudRepl { ident: String::from("self") })
+    ts
+}
+
+
+struct DepTypesFinder { preconds: Vec<TokenStream>, postconds: Vec<TokenStream> }
+impl VisitMut for DepTypesFinder {
+    // Extract DT from any type specifier T, of the form "x: T"
+    fn visit_pat_type_mut(&mut self, i: &mut syn::PatType) {
+        let arg = if let syn::Pat::Ident(ref idt) = *i.pat {
+            idt.ident.to_string()
+        } else { unreachable!("Handle other arg names?") };
+        let mut lh = ToRustType { refinement: None, path: vec![arg] };
+        lh.visit_pat_type_mut(i);
+        if let Some(refinement) = lh.refinement {
+            self.preconds.push(refinement);
+        }
+    }
+    // TODO? support dep types for self args? (LiqudRepl { ident: String::from("self") })
     //fn visit_receiver_mut(&mut self, i: &mut syn::Receiver)
 
+    // Extract DT from function return type T, of the form "... -> T { ... }"
     fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
-        let mut lh = LiqudHider { lt_block : None };
-        lh.visit_return_type_mut(i);
-        if let Some(mut blk) = lh.lt_block {
-            let mut lr = LiqudRepl { ident : String::from("result") };
-            lr.visit_expr_block_mut(&mut blk);
-            self.postconds.push(blk);
+        let mut trt = ToRustType { refinement: None, path: vec![String::from("result")]  };
+        trt.visit_return_type_mut(i);
+        if let Some(refinement) = trt.refinement {
+            self.postconds.push(refinement);
         }
     }
-    // Check for closures
+
+    // Extract DT from closures
     fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
         if let syn::Expr::Closure(ref mut c) = i {
-            let mut lr = LiqudReplacer { preconds: Vec::new(), postconds: Vec::new() };
+            let mut dtf = DepTypesFinder { preconds: Vec::new(), postconds: Vec::new() };
             for j in &mut c.inputs.iter_mut() {
-                lr.visit_pat_mut(j);
+                dtf.visit_pat_mut(j);
             }
-            lr.visit_return_type_mut(&mut c.output);
-            let reqs = lr.preconds.iter().map(to_req_arg).fold(TokenStream::new(), |mut ts1, ts2| {ts1.extend(ts2); ts1} );
-            let all = lr.postconds.iter().map(to_ens_arg).fold(reqs, |mut ts1, ts2| {ts1.extend(ts2); ts1} );
+            dtf.visit_return_type_mut(&mut c.output);
+            let reqs = dtf.preconds.iter().map(to_req_arg).fold(TokenStream::new(), |mut ts1, ts2| {ts1.extend(ts2); ts1} );
+            let all = dtf.postconds.iter().map(to_ens_arg).fold(reqs, |mut ts1, ts2| {ts1.extend(ts2); ts1} );
             //println!("\n{:?}\n", all);
             *i = syn::Expr::Macro(
-                syn::parse_quote! { 
+                syn::parse_quote! {
                     closure!(
                         #all
                         #c
@@ -638,32 +649,42 @@ impl VisitMut for LiqudReplacer {
     }
 }
 
-struct LiqudHider { lt_block: Option<syn::ExprBlock>, }
-impl VisitMut for LiqudHider {
+struct ToRustType { refinement: Option<TokenStream>, path: Vec<String> }
+impl VisitMut for ToRustType {
+    fn visit_type_macro_mut(&mut self, i: &mut syn::TypeMacro) {
+        let ident = &i.mac.path.segments;
+        if ident[ident.len() - 1].ident.to_string() == "t" {
+            let mut tokens = i.mac.tokens.clone().into_iter();
+            i.mac.tokens = tokens.by_ref().take_while(|tkn| {
+                if let TokenTree::Punct(c) = tkn { c.as_char() != '|' }
+                else { true }
+            }).collect();
+            let path = construct_replacement(&self.path);
+            self.refinement = Some(replace_(tokens, path));
+        }
+    }
+
     fn visit_path_segment_mut(&mut self, i: &mut syn::PathSegment) {
-        // Does type have <...> after it?
-        if let syn::PathArguments::AngleBracketed(ref mut gargs) = i.arguments {
-            // Is it more than just an empty <> ?
-            if gargs.args.len() > 0 {
-                // Is the last generic of the form <..., ..., {...}> ?
-                if let syn::GenericArgument::Const(syn::Expr::Block(_)) = &gargs.args[gargs.args.len()-1] {
-                    // Remove Dep Type from actual code
-                    if let syn::punctuated::Pair::End(syn::GenericArgument::Const(syn::Expr::Block(blk))) = gargs.args.pop().unwrap() {
-                        // Save dep type to be checked
-                        self.lt_block = Some(blk)
-                        // TODO: Maybe replace <..., ..., {{...}}> with <..., ..., {...}> so that the latter can be expressed 
-                        //if blk.block.stmts.len() == 1 && let syn::Stmt::Expr(syn::Expr::Block(_)) = blk.block.stmts[0]
-                    } else { unreachable!() }
-                }
-            }
+        self.visit_ident_mut(&mut i.ident);
+        let is_box = i.ident.to_string() == "Box";
+        if is_box { self.path.push( String::from("(*_ )") ); }
+
+        self.visit_path_arguments_mut(&mut i.arguments);
+
+        if is_box { self.path.pop(); }
+    }
+
+    fn visit_type_tuple_mut(&mut self, i: &mut syn::TypeTuple) {
+        for idx in 0..i.elems.len() {
+            self.path.push( format!("_ .{}", idx) );
+            self.visit_type_mut(&mut i.elems[idx]);
+            self.path.pop();
         }
     }
 }
 
-struct LiqudRepl { ident: String, }
-impl VisitMut for LiqudRepl {
-    fn visit_ident_mut(&mut self, i: &mut syn::Ident) {
-        // Check if Ident matches __
-        if i.to_string() == "__" { *i = syn::Ident::new(&self.ident, i.span()); }
-    }
+// Construct final access. E.g: if `path` is ["result", "(*_ )", "_ [_0]", "_ .1"]
+// then we build up: "_ " -> "_ .1" -> "_ [_0].1" -> "(*_ )[_0].1" -> "(*result)[_0].1"
+fn construct_replacement(path: &Vec<String>) -> TokenStream {
+    path.iter().rfold(String::from("_ "), |acc, seg| acc.replace("_ ", seg)).parse().unwrap()
 }

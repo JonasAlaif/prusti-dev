@@ -61,6 +61,11 @@ pub fn predicate(_: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn dep(tokens: TokenStream) -> TokenStream {
-    prusti_specs::dep(tokens.into()).into()
+pub fn prusti(tokens: TokenStream) -> TokenStream {
+    prusti_specs::prusti(tokens.into()).into()
+}
+
+#[proc_macro]
+pub fn t(tokens: TokenStream) -> TokenStream {
+    tokens
 }
