@@ -547,24 +547,73 @@ pub fn prusti(tokens: TokenStream) -> TokenStream {
     let mut file: syn::File = handle_result!(
         syn::parse2(tokens)
     );
+    println!("\n{:?}\n", file);
     PrustiPreprocess.visit_file_mut(&mut file);
     file.into_token_stream()
 }
 struct PrustiPreprocess;
 impl VisitMut for PrustiPreprocess {
     fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
-        dep(i);
+        DepTypes.visit_item_fn_mut(i);
+    }
+    fn visit_item_type_mut(&mut self, i: &mut syn::ItemType) {
+        DepTypes.visit_item_type_mut(i);
     }
 }
 
 
+type PAC = syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>;
 
-
-fn dep(i: &mut syn::ItemFn) {
-    let mut dtf = DepTypesFinder { preconds: Vec::new(), postconds: Vec::new() };
-    dtf.visit_item_fn_mut(i);
-    i.attrs.extend(dtf.preconds.iter().map(to_req_attr));
-    i.attrs.extend(dtf.postconds.iter().map(to_ens_attr));
+struct DepTypes;
+impl VisitMut for DepTypes {
+    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
+        let mut dtf = DepTypesFinder { preconds: Vec::new(), postconds: Vec::new() };
+        dtf.visit_item_fn_mut(i);
+        i.attrs.extend(dtf.preconds.iter().map(to_req_attr));
+        i.attrs.extend(dtf.postconds.iter().map(to_ens_attr));
+    }
+    fn visit_item_type_mut(&mut self, i: &mut syn::ItemType) {
+        let mut trt = ToRustType { refinement: None, path: vec![String::from("self")] }; // TODO: change self keyword
+        trt.visit_item_type_mut(i);
+        if let Some(refinement) = trt.refinement {
+            // match syn::parse2::<syn::Expr>(refinement) {
+            //     Ok(rfn_tree) => {
+            let (consts, others) = i.generics.params.clone().into_iter().partition(is_const_param);
+            i.generics.params = others;
+            let fn_vis = i.vis.clone();
+            let fn_name = i.ident.clone();
+            let fn_generics = i.generics.clone();
+            let fn_inputs: PAC = consts.into_iter().map(gp_to_fnarg).collect();
+            let prop: syn::ItemFn = syn::parse_quote! {
+                #fn_vis fn #fn_name #fn_generics ( self: ActualTypeOfAliasHere , #fn_inputs ) -> bool {
+                    #refinement
+                }
+            }; // TODO: change self keyword
+            println!("TODO: encode {:?}", prop.into_token_stream().to_string());
+                // }
+                // Err(err) => panic!("{}", err), // TODO: improve error
+            // }
+        }
+    }
+}
+fn is_const_param(gp: &syn::GenericParam) -> bool {
+    matches!(gp, syn::GenericParam::Const(_))
+}
+fn gp_to_fnarg(gp: syn::GenericParam) -> syn::FnArg {
+    if let syn::GenericParam::Const(cp) = gp {
+        syn::FnArg::Typed(
+            syn::PatType {
+                attrs: cp.attrs,
+                pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+                    attrs: Vec::new(),
+                    by_ref: None, mutability: None, subpat: None,
+                    ident: cp.ident,
+                })),
+                colon_token: cp.colon_token,
+                ty: Box::new(cp.ty)
+            }
+        )
+    } else { unreachable!() }
 }
 
 fn to_req_attr(ts: &TokenStream) -> syn::Attribute {
@@ -605,12 +654,14 @@ struct DepTypesFinder { preconds: Vec<TokenStream>, postconds: Vec<TokenStream> 
 impl VisitMut for DepTypesFinder {
     // Extract DT from any type specifier T, of the form "x: T"
     fn visit_pat_type_mut(&mut self, i: &mut syn::PatType) {
-        let arg = if let syn::Pat::Ident(ref idt) = *i.pat {
-            idt.ident.to_string()
-        } else { unreachable!("Handle other arg names?") };
-        let mut lh = ToRustType { refinement: None, path: vec![arg] };
-        lh.visit_pat_type_mut(i);
-        if let Some(refinement) = lh.refinement {
+        let arg = match &*i.pat {
+            syn::Pat::Ident(ref idt) => idt.ident.to_string(),
+            syn::Pat::Reference(ref rf) => todo!("Handle rf: '{:?}'?", rf),
+            other => todo!("Handle other arg names: '{:?}'?", other)
+        };
+        let mut trt = ToRustType { refinement: None, path: vec![arg] };
+        trt.visit_pat_type_mut(i);
+        if let Some(refinement) = trt.refinement {
             self.preconds.push(refinement);
         }
     }
@@ -619,7 +670,7 @@ impl VisitMut for DepTypesFinder {
 
     // Extract DT from function return type T, of the form "... -> T { ... }"
     fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
-        let mut trt = ToRustType { refinement: None, path: vec![String::from("result")]  };
+        let mut trt = ToRustType { refinement: None, path: vec![String::from("result")] };
         trt.visit_return_type_mut(i);
         if let Some(refinement) = trt.refinement {
             self.postconds.push(refinement);
