@@ -1,18 +1,30 @@
 use prusti_contracts::*;
-prusti! {
-
-type Index<T, const s: &[i32], const r: i32> = t!{i32 | _ < s.len()};
-
-}
-
-prusti! {
 
 fn main() {}
 
+prusti! {
 
-fn getVal(cl: &[i32], idx: Index<i32, {cl}, 0>) -> bool {
+type Index<const s: &[T]> where T: = i!{usize | _ >= 0 && _ < s.len()};
 
+fn get_val(s: &[i32], idx: Index<{s}>) -> i32 {
+    s[idx]
+}
+
+}
+
+prusti! {
+
+type LessEq<const other: i32> = i!{i32 | _ <= other};
+type Eq<const other: i32> = i!{i32 | _ == other};
+
+fn min(a: i32, b: LessEq<{a}>) -> Eq<{b}> {
+    if a < b { a }
+    else { b }
 }
 
 
 }
+
+
+// type a = i32;
+// fn test(a: i32, b: Box<a>) -> i32 { a + *b }

@@ -9,7 +9,7 @@ mod parse_closure_macro;
 mod spec_attribute_kind;
 pub mod specifications;
 
-use proc_macro2::{Span, TokenStream, TokenTree, token_stream::IntoIter};
+use proc_macro2::{Ident, Span, TokenStream, TokenTree};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
@@ -547,24 +547,34 @@ pub fn prusti(tokens: TokenStream) -> TokenStream {
     let mut file: syn::File = handle_result!(
         syn::parse2(tokens)
     );
-    println!("\n{:?}\n", file);
-    PrustiPreprocess.visit_file_mut(&mut file);
+    let mut pp = PrustiPreprocess { items_to_add: Vec::new() };
+    pp.visit_file_mut(&mut file);
+    file.items.extend(pp.items_to_add);
     file.into_token_stream()
 }
-struct PrustiPreprocess;
+struct PrustiPreprocess { items_to_add: Vec<syn::Item> }
 impl VisitMut for PrustiPreprocess {
     fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
-        DepTypes.visit_item_fn_mut(i);
+         // This is not nice at all, especially since visiting a fn will not
+         // result in any `pred_fns`
+         // TODO: how to make an easily extensible system for
+         // various prusti macro processing steps?
+        let mut dt = DepTypes { pred_fns: Vec::new() };
+        dt.visit_item_fn_mut(i);
     }
     fn visit_item_type_mut(&mut self, i: &mut syn::ItemType) {
-        DepTypes.visit_item_type_mut(i);
+        let mut dt = DepTypes { pred_fns: Vec::new() };
+        dt.visit_item_type_mut(i);
+        self.items_to_add.extend(
+            dt.pred_fns.into_iter().map(syn::Item::Macro)
+        );
     }
 }
 
 
-type PAC = syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>;
+type PC<T> = syn::punctuated::Punctuated<T, syn::token::Comma>;
 
-struct DepTypes;
+struct DepTypes { pred_fns: Vec<syn::ItemMacro> }
 impl VisitMut for DepTypes {
     fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
         let mut dtf = DepTypesFinder { preconds: Vec::new(), postconds: Vec::new() };
@@ -573,32 +583,54 @@ impl VisitMut for DepTypes {
         i.attrs.extend(dtf.postconds.iter().map(to_ens_attr));
     }
     fn visit_item_type_mut(&mut self, i: &mut syn::ItemType) {
-        let mut trt = ToRustType { refinement: None, path: vec![String::from("self")] }; // TODO: change self keyword
+        let mut trt = ToRustType {
+            refinement: None,
+            path: vec![quote::quote_spanned! {i.ident.span()=> _self}] };
         trt.visit_item_type_mut(i);
         if let Some(refinement) = trt.refinement {
-            // match syn::parse2::<syn::Expr>(refinement) {
-            //     Ok(rfn_tree) => {
-            let (consts, others) = i.generics.params.clone().into_iter().partition(is_const_param);
+            let (consts, others) = i.generics.params.clone().into_iter().partition(is_const_param); // TODO: partition_map
             i.generics.params = others;
             let fn_vis = i.vis.clone();
-            let fn_name = i.ident.clone();
-            let fn_generics = i.generics.clone();
-            let fn_inputs: PAC = consts.into_iter().map(gp_to_fnarg).collect();
-            let prop: syn::ItemFn = syn::parse_quote! {
-                #fn_vis fn #fn_name #fn_generics ( self: ActualTypeOfAliasHere , #fn_inputs ) -> bool {
+            let fn_name = type_ident_to_pred_ident(&i.ident);
+            let mut fn_generics = i.generics.clone();
+            if let Some(wc) = &i.generics.where_clause {
+                for wp in &wc.predicates {
+                    match wp {
+                        syn::WherePredicate::Type(pt) => {
+                            let tp = &pt.bounded_ty;
+                            fn_generics.params.push(syn::parse_quote!{#tp});
+                        }
+                        syn::WherePredicate::Lifetime(pl) => {
+                            let lt = &pl.lifetime;
+                            fn_generics.params.push(syn::parse_quote!{#lt});
+                        }
+                        // TODO?: is it correct to ignore this?
+                        syn::WherePredicate::Eq(_pe) => (),
+                    }
+                }
+                i.generics.where_clause = None;
+            }
+            let self_tp = i.ty.clone();
+            let fn_inputs: PC<syn::FnArg> = consts.into_iter().map(gp_to_fnarg).collect();
+            let mut pred_fn: syn::ItemFn = syn::parse_quote! {
+                #fn_vis fn #fn_name #fn_generics ( _self: #self_tp , #fn_inputs ) -> bool {
                     #refinement
                 }
-            }; // TODO: change self keyword
-            println!("TODO: encode {:?}", prop.into_token_stream().to_string());
-                // }
-                // Err(err) => panic!("{}", err), // TODO: improve error
-            // }
+            };
+            pred_fn.sig.generics.where_clause = fn_generics.where_clause;
+            let pred_mac: syn::ItemMacro = syn::parse_quote! {
+                predicate! { #pred_fn }
+            };
+            self.pred_fns.push(pred_mac);
         }
     }
 }
+// If this returns `true`, the Param will be removed? from the ItemType
+// AND added as an argument to the predicate fn
 fn is_const_param(gp: &syn::GenericParam) -> bool {
     matches!(gp, syn::GenericParam::Const(_))
 }
+// Convert Param which returned `true` above into a FnArg
 fn gp_to_fnarg(gp: syn::GenericParam) -> syn::FnArg {
     if let syn::GenericParam::Const(cp) = gp {
         syn::FnArg::Typed(
@@ -615,6 +647,9 @@ fn gp_to_fnarg(gp: syn::GenericParam) -> syn::FnArg {
         )
     } else { unreachable!() }
 }
+fn type_ident_to_pred_ident(i: &Ident) -> Ident {
+    Ident::new(&format!("_type_pred_{}", i), i.span())
+}
 
 fn to_req_attr(ts: &TokenStream) -> syn::Attribute {
     syn::parse_quote! { #[requires( #ts )] }
@@ -628,26 +663,6 @@ fn to_req_arg(ts: &TokenStream) -> TokenStream {
 fn to_ens_arg(ts: &TokenStream) -> TokenStream {
     syn::parse_quote! { ensures( #ts ), }
 }
-// Replace all "_" in TokenStream with arg
-fn replace_(i: IntoIter, arg: TokenStream) -> TokenStream {
-    // TODO? is this the nicest way to replace all TokenTree::Ident("_") in `i`
-    // with a the whole of `arg`? If `arg` was just one Ident then a simple
-    // map would do.
-    let mut ts = TokenStream::new();
-    for tkn in i {
-        match tkn {
-            TokenTree::Ident(ref u) if u.to_string() == "_" => {
-                // Change span to that of the "_" to get nice error reporting
-                let arg_c: TokenStream = arg.clone().into_iter().map(
-                    |mut tkn2| {tkn2.set_span(tkn.span()); tkn2}
-                ).collect();
-                ts.extend(arg_c)
-            }
-            other => ts.extend(Some(other))
-        }
-    }
-    ts
-}
 
 
 struct DepTypesFinder { preconds: Vec<TokenStream>, postconds: Vec<TokenStream> }
@@ -655,8 +670,10 @@ impl VisitMut for DepTypesFinder {
     // Extract DT from any type specifier T, of the form "x: T"
     fn visit_pat_type_mut(&mut self, i: &mut syn::PatType) {
         let arg = match &*i.pat {
-            syn::Pat::Ident(ref idt) => idt.ident.to_string(),
-            syn::Pat::Reference(ref rf) => todo!("Handle rf: '{:?}'?", rf),
+            syn::Pat::Ident(ref pi) => pi.ident.clone().into_token_stream(),
+            syn::Pat::Reference(ref pr) => todo!("Handle rf: '{:?}'?", pr),
+            syn::Pat::Box(ref pb) => todo!("Handle pb: '{:?}'?", pb),
+            //String::from("(*_ )"), // TODO: handle syn::Pat recursively with a walker
             other => todo!("Handle other arg names: '{:?}'?", other)
         };
         let mut trt = ToRustType { refinement: None, path: vec![arg] };
@@ -670,7 +687,10 @@ impl VisitMut for DepTypesFinder {
 
     // Extract DT from function return type T, of the form "... -> T { ... }"
     fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
-        let mut trt = ToRustType { refinement: None, path: vec![String::from("result")] };
+        let mut trt = ToRustType {
+            refinement: None,
+            path: vec![quote::quote_spanned! {Span::call_site()=> result}]
+        };
         trt.visit_return_type_mut(i);
         if let Some(refinement) = trt.refinement {
             self.postconds.push(refinement);
@@ -700,42 +720,117 @@ impl VisitMut for DepTypesFinder {
     }
 }
 
-struct ToRustType { refinement: Option<TokenStream>, path: Vec<String> }
+struct ToRustType { refinement: Option<TokenStream>, path: Vec<TokenStream> }
 impl VisitMut for ToRustType {
     fn visit_type_macro_mut(&mut self, i: &mut syn::TypeMacro) {
         let ident = &i.mac.path.segments;
-        if ident[ident.len() - 1].ident.to_string() == "t" {
+        if ident[ident.len() - 1].ident.to_string() == "i" {
             let mut tokens = i.mac.tokens.clone().into_iter();
             i.mac.tokens = tokens.by_ref().take_while(|tkn| {
                 if let TokenTree::Punct(c) = tkn { c.as_char() != '|' }
                 else { true }
             }).collect();
-            let path = construct_replacement(&self.path);
-            self.refinement = Some(replace_(tokens, path));
+            let path = construct_replacement(tokens.collect(), &self.path);
+            self.refinement = Some(path);
         }
     }
 
     fn visit_path_segment_mut(&mut self, i: &mut syn::PathSegment) {
         self.visit_ident_mut(&mut i.ident);
-        let is_box = i.ident.to_string() == "Box";
-        if is_box { self.path.push( String::from("(*_ )") ); }
+
+        let mut const_blocks: PC<syn::Expr> = syn::punctuated::Punctuated::new();
+        if let syn::PathArguments::AngleBracketed(ref mut abga) = i.arguments {
+            let (consts, others) = abga.args.clone().into_iter().partition(is_const_arg);
+            abga.args = others;
+            const_blocks = consts.iter().map(|ga| {
+                    if let syn::GenericArgument::Const(e) = ga {
+                        e.clone()
+                    } else { unreachable!() }
+            }).collect();
+        }
+
+
+        self.path.push(
+            match i.ident.to_string().as_str() {
+                "Box" => quote::quote_spanned! {i.span()=> (*_)},
+                // TODO?: this may easily be the wrong way to access type `i.ident`
+                // e.g. if `type Ex<T> = (T, i32);` then using
+                // `x: Ex<t!{i32 | _ > 0}>` will throw an error.
+                // Either we just panic here, or, as is currently implemented,
+                // hope that the default either works or
+                // gives an informative error (hence the span info)
+                _ => quote::quote_spanned! {i.span()=> _},
+            }
+        );
 
         self.visit_path_arguments_mut(&mut i.arguments);
 
-        if is_box { self.path.pop(); }
+        self.path.pop();
+
+
+        if const_blocks.len() != 0 {
+            let fn_name = type_ident_to_pred_ident(&i.ident);
+            let path = construct_replacement(quote::quote!{_}, &self.path);
+            self.refinement = match &self.refinement {
+                Some(refinement) => {
+                    Some(syn::parse_quote! { #refinement && #[allow(unused_braces)] #fn_name ( #path , #const_blocks ) })
+                },
+                None => Some(syn::parse_quote! { #[allow(unused_braces)] #fn_name ( #path , #const_blocks ) })
+            };
+            //println!("{:?}", const_blocks);
+        }
     }
 
     fn visit_type_tuple_mut(&mut self, i: &mut syn::TypeTuple) {
         for idx in 0..i.elems.len() {
-            self.path.push( format!("_ .{}", idx) );
+            // Ugly way to force _.0 rather than _.0usize
+            let idx_ts: TokenStream = idx.to_string().parse().unwrap();
+            self.path.push(quote::quote_spanned! {i.span()=>
+                _.#idx_ts
+            });
             self.visit_type_mut(&mut i.elems[idx]);
             self.path.pop();
         }
     }
 }
 
+// TODO: keep normal constants
+// if let syn::Expr::Block(_) = e {
+//     self.const_blocks.push(e.clone());
+//     *i = syn::GenericArgument::Const(syn::parse_quote! { 0 });
+// }
+fn is_const_arg(ga: &syn::GenericArgument) -> bool {
+    matches!(ga, syn::GenericArgument::Const(_))
+}
+
 // Construct final access. E.g: if `path` is ["result", "(*_ )", "_ [_0]", "_ .1"]
 // then we build up: "_ " -> "_ .1" -> "_ [_0].1" -> "(*_ )[_0].1" -> "(*result)[_0].1"
-fn construct_replacement(path: &Vec<String>) -> TokenStream {
-    path.iter().rfold(String::from("_ "), |acc, seg| acc.replace("_ ", seg)).parse().unwrap()
+fn construct_replacement(init: TokenStream, path: &Vec<TokenStream>) -> TokenStream {
+    path.iter().rfold(init, replace_)
+}
+
+// Replace all "_" in TokenStream with arg
+fn replace_(i: TokenStream, arg: &TokenStream) -> TokenStream {
+    // TODO? is this the nicest way to replace all TokenTree::Ident("_") in `i`
+    // with a the whole of `arg`? If `arg` was just one Ident then a simple
+    // map would do.
+    let mut ts = TokenStream::new();
+    for tkn in i {
+        match tkn {
+            TokenTree::Group(ref g) => {
+                let mut new_g = proc_macro2::Group::new(g.delimiter(), replace_(g.stream(), arg));
+                new_g.set_span(g.span());
+                ts.extend(Some(proc_macro2::TokenTree::Group(new_g)))
+            }
+            TokenTree::Ident(ref u) if u.to_string() == "_" => {
+                // Change span to that of the "_" to get nice error reporting
+                let arg_c: TokenStream = arg.clone().into_iter().map(
+                    |mut tkn2| {tkn2.set_span(tkn.span()); tkn2}
+                ).collect();
+                ts.extend(arg_c)
+            }
+            other => ts.extend(Some(other))
+        }
+    }
+    ts
 }

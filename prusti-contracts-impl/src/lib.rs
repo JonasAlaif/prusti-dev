@@ -66,6 +66,6 @@ pub fn prusti(tokens: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn t(tokens: TokenStream) -> TokenStream {
+pub fn i(tokens: TokenStream) -> TokenStream {
     tokens
 }
