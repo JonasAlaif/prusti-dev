@@ -16,7 +16,7 @@ prusti! {
 
 type LessEq<const x: i32, const y: i32> = i!{i32 | _ <= x && _ <= y};
 
-fn min(mut a: i!{i32 | _ >= 0}, b: i32) -> i!{LessEq<{a}, {b}> | _ == a || _ == b} {
+fn min((ref x, y): (i!{i32 | _ > 0 && _ > 1}, i32), a: i32, b: i32) -> i!{LessEq<{a}, {b}> | _ == a || _ == b} {
     if a < b { a }
     else { b }
 }

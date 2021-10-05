@@ -668,55 +668,59 @@ fn to_ens_arg(ts: &TokenStream) -> TokenStream {
 struct ToAccessor { accessor: TokenStream }
 impl<'ast> Visit<'ast> for ToAccessor {
     fn visit_pat(&mut self, i: &'ast Pat) {
-        match i {
-            Pat::Box(_binding_0) => {
-                self.visit_pat_box(_binding_0);
+        println!("\n{:?}\n", i);
+        self.accessor = match i {
+            // To reason about `&x: &i!{i32 | _ > 0}`
+            // or `box x: Box<i!{i32 | _ > 0}>` (we see `&x`, `box x`)
+            // we must return `(&x)`. Thus, when the type on the right
+            // is parsed we get `(*(&x)) > 0`. We recursively
+            // get `accessor` within and then take the address.
+            Pat::Box(syn::PatBox { pat, .. }) |
+            Pat::Reference(syn::PatReference { pat, .. }) => {
+                self.visit_pat(pat);
+                let sa = &self.accessor;
+                quote_spanned! {i.span()=> ( & #sa ) }
             }
-            Pat::Ident(_binding_0) => {
-                self.visit_pat_ident(_binding_0);
+            // The inverse applies for `ref x: i!{i32 | _ > 0}` (`by_ref`).
+            Pat::Ident(syn::PatIdent { by_ref, ident, .. }) => {
+                if let None = by_ref { ident.clone().into_token_stream() }
+                else { quote_spanned! {i.span()=> ( * #ident ) } }
             }
-            Pat::Lit(_binding_0) => {
-                self.visit_pat_lit(_binding_0);
+            // Try to make these work, though generally unsupported.
+            Pat::Lit(_) |
+            Pat::Macro(_) |
+            Pat::Path(_) => i.into_token_stream(),
+            // Recursively get accessors for each elem of an array/tuple
+            // and then reconstruct it. For example, for 
+            // `(ref a, b): (i!{i32 | _ > 0}, i32)`
+            // we should return `((*a), b)` so that `((*a), b).0 > 0`.
+            Pat::Slice(syn::PatSlice { elems, .. }) |
+            Pat::Tuple(syn::PatTuple { elems, .. }) => {
+                let accessors: PC<TokenStream> = elems.into_iter().map(|pat| {
+                    self.visit_pat(&pat);
+                    self.accessor.clone()
+                }).collect();
+                if let Pat::Slice(_) = i { quote_spanned! {i.span()=> [ #accessors ] } }
+                else { quote_spanned! {i.span()=> ( #accessors ) } }
             }
-            Pat::Macro(_binding_0) => {
-                self.visit_pat_macro(_binding_0);
-            }
-            Pat::Or(_binding_0) => {
-                self.visit_pat_or(_binding_0);
-            }
-            Pat::Path(_binding_0) => {
-                self.visit_pat_path(_binding_0);
-            }
-            Pat::Range(_binding_0) => {
-                self.visit_pat_range(_binding_0);
-            }
-            Pat::Reference(_binding_0) => {
-                self.visit_pat_reference(_binding_0);
-            }
-            Pat::Rest(_binding_0) => {
-                self.visit_pat_rest(_binding_0);
-            }
-            Pat::Slice(_binding_0) => {
-                self.visit_pat_slice(_binding_0);
-            }
-            Pat::Struct(_binding_0) => {
-                self.visit_pat_struct(_binding_0);
-            }
-            Pat::Tuple(_binding_0) => {
-                self.visit_pat_tuple(_binding_0);
-            }
-            Pat::TupleStruct(_binding_0) => {
-                self.visit_pat_tuple_struct(_binding_0);
-            }
-            Pat::Type(_binding_0) => {
-                self.visit_pat_type(_binding_0);
-            }
-            Pat::Verbatim(_binding_0) => {
-                // skip!(_binding_0);
-            }
-            Pat::Wild(_binding_0) => {
-                self.visit_pat_wild(_binding_0);
-            }
+            Pat::Verbatim(pv) => pv.clone(),
+            // Try to give a helpful error if we try to reason about these.
+            // Simply `panic!()` here is incorrect as the code might not constrain
+            // the type (`i!{}`) or might not use `_` in the constraint.
+            Pat::Or(_) |
+            Pat::Range(_) |
+            Pat::Rest(_) |
+            // TODO?: The following two could be implemented, do we want this?
+            Pat::Struct(_) |
+            Pat::TupleStruct(_) |
+            Pat::Type(_) |
+            Pat::Wild(_) => {
+                // Call site span will refer to the `_`
+                let err = quote! { ERROR };
+                // Message span refers to unsupported pattern
+                let msg = quote_spanned! {i.span()=> pattern_unsupported };
+                quote! { ( #err : #msg ) }
+            },
             _ => unreachable!(),
         }
     }
@@ -733,8 +737,10 @@ impl VisitMut for DepTypesFinder {
         //     //String::from("(*_ )"), // TODO: handle syn::Pat recursively with a walker
         //     other => todo!("Handle other arg names: '{:?}'?", other)
         // };
-        let arg = i.pat.clone().into_token_stream();
-        let mut trt = ToRustType { refinement: None, path: vec![arg] };
+        let mut ta = ToAccessor { accessor: TokenStream::new() };
+        ta.visit_pat(&*i.pat);
+        //let arg = i.pat.clone().into_token_stream();
+        let mut trt = ToRustType { refinement: None, path: vec![ta.accessor] };
         trt.visit_pat_type_mut(i);
         if let Some(refinement) = trt.refinement {
             self.preconds.push(refinement);
@@ -843,17 +849,17 @@ impl VisitMut for ToRustType {
             }).collect();
         }
 
-
+        let wild = quote! {_};
         self.path.push(
             match i.ident.to_string().as_str() {
-                "Box" => quote_spanned! {i.span()=> (*_)},
+                "Box" => quote_spanned! {i.span()=> (* #wild )},
                 // TODO?: this may easily be the wrong way to access type `i.ident`
                 // e.g. if `type Ex<T> = (T, i32);` then using
                 // `x: Ex<t!{i32 | _ > 0}>` will throw an error.
                 // Either we just panic here, or, as is currently implemented,
                 // hope that the default either works or
                 // gives an informative error (hence the span info)
-                _ => quote_spanned! {i.span()=> _},
+                _ => wild,
             }
         );
 
@@ -878,8 +884,9 @@ impl VisitMut for ToRustType {
         for idx in 0..i.elems.len() {
             // Ugly way to force _.0 rather than _.0usize
             let idx_ts: TokenStream = idx.to_string().parse().unwrap();
+            let wild = quote! {_};
             self.path.push(quote_spanned! {i.span()=>
-                _.#idx_ts
+                #wild.#idx_ts
             });
             self.visit_type_mut(&mut i.elems[idx]);
             self.path.pop();
@@ -917,13 +924,24 @@ fn replace_(i: TokenStream, arg: &TokenStream) -> TokenStream {
             }
             TokenTree::Ident(ref u) if u.to_string() == "_" => {
                 // Change span to that of the "_" to get nice error reporting
-                let arg_c: TokenStream = arg.clone().into_iter().map(
-                    |mut tkn2| {tkn2.set_span(tkn.span()); tkn2}
-                ).collect();
-                ts.extend(arg_c)
+                ts.extend(modify_span(arg, &tkn.span()))
             }
             other => ts.extend(Some(other))
         }
     }
     ts
+}
+
+fn modify_span(ts: &TokenStream, span: &Span) -> TokenStream {
+    ts.clone().into_iter().map(|mut tkn| {
+        if tkn.span().start() == Span::call_site().start()
+        && tkn.span().end() == Span::call_site().end() {
+            tkn.set_span(*span)
+        }
+        if let TokenTree::Group(ref mut g) = tkn {
+            let mut new_g = proc_macro2::Group::new(g.delimiter(), modify_span(&g.stream(), span));
+            new_g.set_span(g.span());
+            proc_macro2::TokenTree::Group(new_g)
+        } else { tkn }
+    }).collect()
 }
