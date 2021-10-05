@@ -64,8 +64,3 @@ pub fn predicate(_: TokenStream) -> TokenStream {
 pub fn prusti(tokens: TokenStream) -> TokenStream {
     prusti_specs::prusti(tokens.into()).into()
 }
-
-#[proc_macro]
-pub fn i(tokens: TokenStream) -> TokenStream {
-    tokens
-}

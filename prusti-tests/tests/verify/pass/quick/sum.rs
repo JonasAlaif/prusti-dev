@@ -14,10 +14,9 @@ fn get_val(s: &[i32], idx: Index<{s}>) -> i32 {
 
 prusti! {
 
-type LessEq<const other: i32> = i!{i32 | _ <= other};
-type Eq<const other: i32> = i!{i32 | _ == other};
+type LessEq<const x: i32, const y: i32> = i!{i32 | _ <= x && _ <= y};
 
-fn min(a: i32, b: LessEq<{a}>) -> Eq<{b}> {
+fn min(mut a: i!{i32 | _ >= 0}, b: i32) -> i!{LessEq<{a}, {b}> | _ == a || _ == b} {
     if a < b { a }
     else { b }
 }

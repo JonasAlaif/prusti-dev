@@ -12,7 +12,8 @@ pub mod specifications;
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::spanned::Spanned;
-use syn::visit_mut::VisitMut;
+use syn::{Type, Pat};
+use syn::{visit::Visit, visit_mut::VisitMut};
 use std::convert::TryInto;
 
 use specifications::untyped;
@@ -585,7 +586,7 @@ impl VisitMut for DepTypes {
     fn visit_item_type_mut(&mut self, i: &mut syn::ItemType) {
         let mut trt = ToRustType {
             refinement: None,
-            path: vec![quote::quote_spanned! {i.ident.span()=> _self}] };
+            path: vec![quote_spanned! {i.ident.span()=> _self}] };
         trt.visit_item_type_mut(i);
         if let Some(refinement) = trt.refinement {
             let (consts, others) = i.generics.params.clone().into_iter().partition(is_const_param); // TODO: partition_map
@@ -664,18 +665,75 @@ fn to_ens_arg(ts: &TokenStream) -> TokenStream {
     syn::parse_quote! { ensures( #ts ), }
 }
 
+struct ToAccessor { accessor: TokenStream }
+impl<'ast> Visit<'ast> for ToAccessor {
+    fn visit_pat(&mut self, i: &'ast Pat) {
+        match i {
+            Pat::Box(_binding_0) => {
+                self.visit_pat_box(_binding_0);
+            }
+            Pat::Ident(_binding_0) => {
+                self.visit_pat_ident(_binding_0);
+            }
+            Pat::Lit(_binding_0) => {
+                self.visit_pat_lit(_binding_0);
+            }
+            Pat::Macro(_binding_0) => {
+                self.visit_pat_macro(_binding_0);
+            }
+            Pat::Or(_binding_0) => {
+                self.visit_pat_or(_binding_0);
+            }
+            Pat::Path(_binding_0) => {
+                self.visit_pat_path(_binding_0);
+            }
+            Pat::Range(_binding_0) => {
+                self.visit_pat_range(_binding_0);
+            }
+            Pat::Reference(_binding_0) => {
+                self.visit_pat_reference(_binding_0);
+            }
+            Pat::Rest(_binding_0) => {
+                self.visit_pat_rest(_binding_0);
+            }
+            Pat::Slice(_binding_0) => {
+                self.visit_pat_slice(_binding_0);
+            }
+            Pat::Struct(_binding_0) => {
+                self.visit_pat_struct(_binding_0);
+            }
+            Pat::Tuple(_binding_0) => {
+                self.visit_pat_tuple(_binding_0);
+            }
+            Pat::TupleStruct(_binding_0) => {
+                self.visit_pat_tuple_struct(_binding_0);
+            }
+            Pat::Type(_binding_0) => {
+                self.visit_pat_type(_binding_0);
+            }
+            Pat::Verbatim(_binding_0) => {
+                // skip!(_binding_0);
+            }
+            Pat::Wild(_binding_0) => {
+                self.visit_pat_wild(_binding_0);
+            }
+            _ => unreachable!(),
+        }
+    }
+}
 
 struct DepTypesFinder { preconds: Vec<TokenStream>, postconds: Vec<TokenStream> }
 impl VisitMut for DepTypesFinder {
     // Extract DT from any type specifier T, of the form "x: T"
     fn visit_pat_type_mut(&mut self, i: &mut syn::PatType) {
-        let arg = match &*i.pat {
-            syn::Pat::Ident(ref pi) => pi.ident.clone().into_token_stream(),
-            syn::Pat::Reference(ref pr) => todo!("Handle rf: '{:?}'?", pr),
-            syn::Pat::Box(ref pb) => todo!("Handle pb: '{:?}'?", pb),
-            //String::from("(*_ )"), // TODO: handle syn::Pat recursively with a walker
-            other => todo!("Handle other arg names: '{:?}'?", other)
-        };
+        // let arg = match &*i.pat {
+        //     syn::Pat::Ident(ref pi) => pi.ident.clone().into_token_stream(),
+        //     syn::Pat::Reference(ref pr) => todo!("Handle rf: '{:?}'?", pr),
+        //     syn::Pat::Box(ref pb) => todo!("Handle pb: '{:?}'?", pb),
+        //     //String::from("(*_ )"), // TODO: handle syn::Pat recursively with a walker
+        //     other => todo!("Handle other arg names: '{:?}'?", other)
+        // };
+        let arg = i.pat.clone().into_token_stream();
         let mut trt = ToRustType { refinement: None, path: vec![arg] };
         trt.visit_pat_type_mut(i);
         if let Some(refinement) = trt.refinement {
@@ -689,7 +747,7 @@ impl VisitMut for DepTypesFinder {
     fn visit_return_type_mut(&mut self, i: &mut syn::ReturnType) {
         let mut trt = ToRustType {
             refinement: None,
-            path: vec![quote::quote_spanned! {Span::call_site()=> result}]
+            path: vec![quote_spanned! {Span::call_site()=> result}]
         };
         trt.visit_return_type_mut(i);
         if let Some(refinement) = trt.refinement {
@@ -720,18 +778,54 @@ impl VisitMut for DepTypesFinder {
     }
 }
 
+fn dt_is_dt_macro(i: &syn::TypeMacro) -> bool {
+    let ident = &i.mac.path.segments;
+    ident[ident.len() - 1].ident.to_string() == "i"
+}
+
 struct ToRustType { refinement: Option<TokenStream>, path: Vec<TokenStream> }
+impl ToRustType {
+    fn visit_dt_macro_mut(&mut self, macro_body: TokenStream, i: &mut Type) {
+        let mut ts_iter = macro_body.into_iter();
+        // Get all tokens before `|` separator in macro call.
+        // Tokens after the `|` remain in `ts_iter` to be collected later.
+        let tp_ts: TokenStream = ts_iter.by_ref().take_while(|tkn| {
+            if let TokenTree::Punct(c) = tkn { c.as_char() != '|' }
+            else { true }
+        }).collect();
+        *i = syn::parse_quote! { #tp_ts };
+        self.visit_type_mut(i);
+
+        let refinement = construct_replacement(ts_iter.collect(), &self.path);
+        self.refinement = match &self.refinement {
+            Some(other_refinement) => Some(quote! { (#other_refinement) && (#refinement) }),
+            None =>                   Some(refinement),
+        };
+    }
+}
 impl VisitMut for ToRustType {
-    fn visit_type_macro_mut(&mut self, i: &mut syn::TypeMacro) {
-        let ident = &i.mac.path.segments;
-        if ident[ident.len() - 1].ident.to_string() == "i" {
-            let mut tokens = i.mac.tokens.clone().into_iter();
-            i.mac.tokens = tokens.by_ref().take_while(|tkn| {
-                if let TokenTree::Punct(c) = tkn { c.as_char() != '|' }
-                else { true }
-            }).collect();
-            let path = construct_replacement(tokens.collect(), &self.path);
-            self.refinement = Some(path);
+    fn visit_type_mut(&mut self, i: &mut Type) {
+        match i {
+            Type::Array(ta) =>      self.visit_type_array_mut(ta),
+            Type::BareFn(tbf) =>    self.visit_type_bare_fn_mut(tbf),
+            Type::Group(tg) =>      self.visit_type_group_mut(tg),
+            Type::ImplTrait(tit) => self.visit_type_impl_trait_mut(tit),
+            Type::Infer(ti) =>      self.visit_type_infer_mut(ti),
+            Type::Macro(tm) =>      {
+                if dt_is_dt_macro(tm) {
+                    self.visit_dt_macro_mut(tm.mac.tokens.clone(), i)
+                } else { self.visit_type_macro_mut(tm) }
+            }
+            Type::Never(tn) =>      self.visit_type_never_mut(tn),
+            Type::Paren(tp) =>      self.visit_type_paren_mut(tp),
+            Type::Path(tp) =>       self.visit_type_path_mut(tp),
+            Type::Ptr(tp) =>        self.visit_type_ptr_mut(tp),
+            Type::Reference(tr) =>  self.visit_type_reference_mut(tr),
+            Type::Slice(ts) =>      self.visit_type_slice_mut(ts),
+            Type::TraitObject(o) => self.visit_type_trait_object_mut(o),
+            Type::Tuple(tt) =>      self.visit_type_tuple_mut(tt),
+            Type::Verbatim(_tv) =>  (),
+            _ => unreachable!(),
         }
     }
 
@@ -752,14 +846,14 @@ impl VisitMut for ToRustType {
 
         self.path.push(
             match i.ident.to_string().as_str() {
-                "Box" => quote::quote_spanned! {i.span()=> (*_)},
+                "Box" => quote_spanned! {i.span()=> (*_)},
                 // TODO?: this may easily be the wrong way to access type `i.ident`
                 // e.g. if `type Ex<T> = (T, i32);` then using
                 // `x: Ex<t!{i32 | _ > 0}>` will throw an error.
                 // Either we just panic here, or, as is currently implemented,
                 // hope that the default either works or
                 // gives an informative error (hence the span info)
-                _ => quote::quote_spanned! {i.span()=> _},
+                _ => quote_spanned! {i.span()=> _},
             }
         );
 
@@ -770,12 +864,11 @@ impl VisitMut for ToRustType {
 
         if const_blocks.len() != 0 {
             let fn_name = type_ident_to_pred_ident(&i.ident);
-            let path = construct_replacement(quote::quote!{_}, &self.path);
+            let path = construct_replacement(quote!{_}, &self.path);
+            let refinement = quote! { #[allow(unused_braces)] #fn_name ( #path , #const_blocks ) };
             self.refinement = match &self.refinement {
-                Some(refinement) => {
-                    Some(syn::parse_quote! { #refinement && #[allow(unused_braces)] #fn_name ( #path , #const_blocks ) })
-                },
-                None => Some(syn::parse_quote! { #[allow(unused_braces)] #fn_name ( #path , #const_blocks ) })
+                Some(other_refinement) => Some(quote! { (#other_refinement) && (#refinement) }),
+                None =>                   Some(refinement),
             };
             //println!("{:?}", const_blocks);
         }
@@ -785,7 +878,7 @@ impl VisitMut for ToRustType {
         for idx in 0..i.elems.len() {
             // Ugly way to force _.0 rather than _.0usize
             let idx_ts: TokenStream = idx.to_string().parse().unwrap();
-            self.path.push(quote::quote_spanned! {i.span()=>
+            self.path.push(quote_spanned! {i.span()=>
                 _.#idx_ts
             });
             self.visit_type_mut(&mut i.elems[idx]);

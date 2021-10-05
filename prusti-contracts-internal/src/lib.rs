@@ -60,10 +60,7 @@ pub fn predicate(tokens: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn prusti(tokens: TokenStream) -> TokenStream {
-    prusti_specs::prusti(tokens.into()).into()
-}
-
-#[proc_macro]
-pub fn i(tokens: TokenStream) -> TokenStream {
-    tokens
+    let tst: TokenStream = prusti_specs::prusti(tokens.into()).into();
+    println!("\n{}\n", tst.to_string());
+    tst
 }
