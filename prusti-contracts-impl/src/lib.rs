@@ -64,3 +64,8 @@ pub fn predicate(_: TokenStream) -> TokenStream {
 pub fn prusti(tokens: TokenStream) -> TokenStream {
     prusti_specs::prusti(tokens.into()).into()
 }
+
+#[proc_macro_attribute]
+pub fn verify(_attr: TokenStream, tokens: TokenStream) -> TokenStream {
+    prusti_specs::prusti(tokens.into()).into()
+}

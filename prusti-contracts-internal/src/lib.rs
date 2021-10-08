@@ -64,3 +64,8 @@ pub fn prusti(tokens: TokenStream) -> TokenStream {
     println!("\n{}\n", tst.to_string());
     tst
 }
+
+#[proc_macro_attribute]
+pub fn verify(_attr: TokenStream, tokens: TokenStream) -> TokenStream {
+    prusti_specs::prusti(tokens.into()).into()
+}
