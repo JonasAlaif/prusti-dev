@@ -37,6 +37,7 @@ mod private {
     pub use prusti_contracts_impl::predicate;
 
     pub use prusti_contracts_impl::prusti;
+    pub use prusti_contracts_impl::verify;
 }
 
 #[cfg(feature = "prusti")]
@@ -76,6 +77,7 @@ mod private {
     pub use prusti_contracts_internal::predicate;
 
     pub use prusti_contracts_internal::prusti;
+    pub use prusti_contracts_internal::verify;
 }
 
 

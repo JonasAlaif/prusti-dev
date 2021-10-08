@@ -1,8 +1,9 @@
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
-use syn::{visit_mut::VisitMut};
+use syn::{visit::Visit, visit_mut::VisitMut};
 use syn::{Type, parse_quote};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::spanned::Spanned;
+use std::collections::HashSet;
 
 pub(crate) type PC<T> = syn::punctuated::Punctuated<T, syn::token::Comma>;
 pub(crate) fn type_ident_to_pred_ident(i: &Ident) -> Ident {
@@ -37,7 +38,10 @@ impl<'a> ToRustType<'a> {
             if let TokenTree::Punct(c) = tkn { c.as_char() != '|' }
             else { true }
         }).collect();
-        *i = parse_quote! { #tp_ts };
+        *i = syn::parse2(tp_ts).unwrap_or_else(|err| {
+            let ce = err.to_compile_error();
+            parse_quote!{ #ce }
+        });
         self.visit_type_mut(i);
 
         let refinement = construct_replacement(ts_iter.collect(), &self.path);
@@ -105,7 +109,7 @@ impl<'a> VisitMut for ToRustType<'a> {
             Type::Array(_) =>       self.visit_collection_mut(i), // <-
             Type::BareFn(tbf) =>    self.visit_type_bare_fn_mut(tbf),
             Type::Group(tg) =>      self.visit_type_group_mut(tg),
-            Type::ImplTrait(tit) => self.visit_type_impl_trait_mut(tit),
+            Type::ImplTrait(_it) => (), //self.visit_type_impl_trait_mut(it),
             Type::Infer(ti) =>      self.visit_type_infer_mut(ti),
             Type::Macro(tm) =>      {
                 if dt_is_dt_macro(tm) {
@@ -128,16 +132,42 @@ impl<'a> VisitMut for ToRustType<'a> {
     fn visit_path_segment_mut(&mut self, i: &mut syn::PathSegment) {
         self.visit_ident_mut(&mut i.ident);
 
-        let mut consts: PC<syn::Expr> = syn::punctuated::Punctuated::new();
+        let mut has_const_args = false;
+        let mut has_assoc_tp_args = false;
+        let mut pred_args: PC<syn::Expr> = syn::punctuated::Punctuated::new();
         if let syn::PathArguments::AngleBracketed(ref mut abga) = i.arguments {
-            abga.args = abga.args.clone().into_iter().map(|mut ga| {
-                if let syn::GenericArgument::Const(e) = &ga {
-                    consts.push(e.clone());
-                    if let syn::Expr::Block(_) = e {
-                        let expr = quote_spanned! {ga.span()=> 'i' };
-                        ga = syn::GenericArgument::Const(parse_quote! { #expr });
+            has_const_args = abga.args.len() == 0;
+            abga.args = abga.args.clone().into_iter().filter(|ga| {
+                match ga {
+                    syn::GenericArgument::Lifetime(_) => {
+                        let e = quote_spanned!{ga.span()=> ((),())};
+                        pred_args.push(parse_quote!{#e}); true
                     }
-                } ga
+                    syn::GenericArgument::Type(_) => {
+                        let e = quote_spanned!{ga.span()=> ()};
+                        pred_args.push(parse_quote!{#e}); true
+                    }
+                    syn::GenericArgument::Binding(_) |
+                    syn::GenericArgument::Constraint(_) => {
+                        // We don't visit `Type::ImplTrait` so this
+                        // should be `unreachable!()`
+                        has_assoc_tp_args = true; true
+                    }
+                    syn::GenericArgument::Const(e) => {
+                        pred_args.push(e.clone());
+                        // true if of the form `{...}` but not of the form `{{...}}`
+                        let is_block = if let syn::Expr::Block(eb) = e {
+                            if eb.block.stmts.len() == 1 {
+                                !matches!(
+                                    eb.block.stmts[0],
+                                    syn::Stmt::Expr(syn::Expr::Block(_))
+                                )
+                            } else { true }
+                        } else { false };
+                        has_const_args = has_const_args || is_block;
+                        !is_block
+                    }
+                }
             }).collect();
         }
 
@@ -162,10 +192,13 @@ impl<'a> VisitMut for ToRustType<'a> {
         // TODO: this is not the correct guard to use!
         // We may have a type `Nat` with no generic args, but should still require a predicate.
         // This is decided at the definition of `type Nat = ???`
-        if consts.len() != 0 {
-            let fn_name = type_ident_to_pred_ident(&i.ident);
+        if has_const_args {
+            if has_assoc_tp_args {
+                panic!("Const params and associated type bounds are not compatible: {}", i.ident);
+            }
+            let pred_name = type_ident_to_pred_ident(&i.ident);
             let path = construct_replacement(quote!{_}, &self.path);
-            let refinement = quote! { #[allow(unused_braces)] #fn_name ( #path , #consts ) };
+            let refinement = quote! { #[allow(unused_braces)] #pred_name ( #path , #pred_args ) };
             self.refinement = match &self.refinement {
                 Some(other_refinement) => Some(quote! { (#other_refinement) && (#refinement) }),
                 None =>                   Some(refinement),
@@ -241,4 +274,68 @@ fn modify_span(ts: &TokenStream, span: &Span) -> TokenStream {
             proc_macro2::TokenTree::Group(new_g)
         } else { tkn }
     }).collect()
+}
+
+
+
+pub(crate) struct GetFreeVars {
+    pub(crate) fvs: HashSet<Ident>,
+    bvs: HashSet<Ident>,
+    bind_pos: Option<bool>
+}
+impl GetFreeVars {
+    pub(crate) fn new() -> Self {
+        GetFreeVars {
+            fvs: HashSet::new(), bvs: HashSet::new(), bind_pos: None
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for GetFreeVars {
+    fn visit_ident(&mut self, i: &'ast Ident) {
+        if let Some(bind) = self.bind_pos {
+            if bind {
+                self.bvs.insert(i.clone());
+            } else if !self.bvs.contains(i) {
+                self.fvs.insert(i.clone());
+            }
+        }
+    }
+    fn visit_expr_path(&mut self, i: &'ast syn::ExprPath) {
+        let ps = &i.path.segments;
+        if ps.len() == 1 {
+            if let Some(_) = self.bind_pos {
+                self.visit_ident(&ps[0].ident);
+            } else {
+                // Assume that the current ident isn't in a binding pos.
+                // We should try to avoid this case if possible.
+                self.bind_pos = Some(false);
+                self.visit_ident(&ps[0].ident);
+                self.bind_pos = None;
+            }
+        }
+    }
+    fn visit_expr_closure(&mut self, i: &'ast syn::ExprClosure) {
+        let bvs = self.bvs.clone();
+        self.bind_pos = Some(true);
+        for input in &i.inputs { self.visit_pat(&input); }
+        self.bind_pos = Some(false);
+        self.visit_expr(&i.body);
+        self.bind_pos = None;
+        self.bvs = bvs;
+    }
+    fn visit_expr_block(&mut self, i: &'ast syn::ExprBlock) {
+        let bvs = self.bvs.clone();
+        self.visit_block(&i.block);
+        self.bvs = bvs;
+    }
+    fn visit_local(&mut self, i: &'ast syn::Local) {
+        if let Some((_, expr)) = &i.init {
+            self.bind_pos = Some(false);
+            self.visit_expr(&expr);
+        }
+        self.bind_pos = Some(true);
+        self.visit_pat(&i.pat);
+        self.bind_pos = None;
+    }
 }
