@@ -25,81 +25,61 @@ use rustc_middle::{mir, ty};
 use crate::environment::borrowck::facts;
 
 #[derive(Debug)]
-pub struct PlaceRegions(HashMap<(mir::Local, Vec<usize>), facts::Region>);
+pub struct PlaceRegions<'tcx>(HashMap<(mir::Local, Vec<mir::PlaceElem<'tcx>>), facts::Region>);
 
 #[derive(Clone, Debug)]
 pub enum PlaceRegionsError {
     Unsupported(String),
 }
 
-impl PlaceRegions {
-    fn new() -> Self {
-        PlaceRegions(HashMap::new())
+impl<'tcx> PlaceRegions<'tcx> {
+    fn new(local_decls: &mir::LocalDecls) -> Self {
+        let mut place_regions = PlaceRegions(HashMap::new());
+        for (local, local_decl) in local_decls.iter_enumerated() {
+            let ty = local_decl.ty;
+            println!("local: {:?} {:?}", local, ty);
+            place_regions.extract_region(local, ty, &mut vec![]);
+        }
+        place_regions
     }
 
-    fn add_local(&mut self, local: mir::Local, rvid: facts::Region) {
-        self.add(local, vec![], rvid);
-    }
-
-    fn add(&mut self, local: mir::Local, projections: Vec<usize>, rvid: facts::Region) {
-        self.0.insert((local, projections), rvid);
+    fn add(&mut self, local: mir::Local, idxs: &Vec<u32>, rvid: facts::Region) {
+        self.0.insert((local, idxs.iter().map(|&i| mir::PlaceElem::Index(i.into())).collect()), rvid);
     }
 
     pub fn for_local(&self, local: mir::Local)-> Option<facts::Region> {
-        self.for_place(local.into()).unwrap()
+        self.for_place(local.into())
     }
 
     /// Determines the region of a MIR place. Right now, the only supported places are locals and tuples. Tuples cannot be nested inside other tuples.
     pub fn for_place(&self, place: mir::Place)
-        -> Result<Option<facts::Region>, PlaceRegionsError>
+        -> Option<facts::Region>
     {
-        let (local, fields) = Self::translate_place(place)?;
-        Ok(self.0.get(&(local, fields)).cloned())
+        println!("for_place: {:?} {:?}", place.local, place.projection);
+        // Translates a place like _3.0.3.1 into a local (here _3) and a list of field projections like (here [0, 3, 1]).
+        self.0.get(&(place.local, place.projection.to_vec())).cloned()
     }
 
-    /// Translates a place like _3.0.3.1 into a local (here _3) and a list of field projections like (here [0, 3, 1]).
-    fn translate_place(place: mir::Place)
-        -> Result<(mir::Local, Vec<usize>), PlaceRegionsError>
-    {
-        let indices = place.projection.iter()
-            .map(|elem| match elem {
-                mir::ProjectionElem::Field(f, _) => Ok(f.index()),
-                mir::ProjectionElem::Deref => {
-                    Err(PlaceRegionsError::Unsupported(
-                        "determining the region of a dereferentiation is \
-                        not supported".to_string()
-                    ))
+    fn extract_region(&mut self, local: mir::Local, ty: ty::Ty<'_>, tuple_idxs: &mut Vec<u32>) {
+        match ty.kind() {
+            ty::TyKind::Ref(region, _, _) => {
+                self.add(local, tuple_idxs, extract_region_id(region));
+                debug!("region: {:?}", region);
+            }
+            ty::TyKind::Tuple(substs) => {
+                tuple_idxs.push(0);
+                for (i, ty) in substs.types().enumerate() {
+                    *tuple_idxs.last_mut().unwrap() = i as u32;
+                    self.extract_region(local, ty, tuple_idxs);
                 }
-                mir::ProjectionElem::Index(_) => {
-                    Err(PlaceRegionsError::Unsupported(
-                        "determining the region of array indexing is \
-                        not supported".to_string()
-                    ))
-                }
-                mir::ProjectionElem::ConstantIndex{..} => {
-                    Err(PlaceRegionsError::Unsupported(
-                        "determining the region of constant indexing is \
-                        not supported".to_string()
-                    ))
-                }
-                mir::ProjectionElem::Subslice{..} => {
-                    Err(PlaceRegionsError::Unsupported(
-                        "determining the region of a subslice is \
-                        not supported".to_string()
-                    ))
-                }
-                mir::ProjectionElem::Downcast(_, _) => {
-                    Err(PlaceRegionsError::Unsupported(
-                        "determining the region of a downcast is \
-                        not supported".to_string()
-                    ))
-                }
-            })
-            .collect::<Result<_, _>>()?;
-        Ok((place.local, indices))
+                tuple_idxs.pop();
+            }
+            _ => {
+                debug!("does not contain regions: {:?}: {:?} {:?}", local, ty, ty.kind());
+            }
+        }
     }
 }
-
 fn extract_region_id(region: &ty::RegionKind) -> facts::Region {
     match region {
         ty::RegionKind::ReVar(rvid) => {
@@ -109,41 +89,9 @@ fn extract_region_id(region: &ty::RegionKind) -> facts::Region {
     }
 }
 
-fn extract_region(place_regions: &mut PlaceRegions, local: mir::Local, ty: ty::Ty<'_>) {
-    match ty.kind() {
-        ty::TyKind::Ref(region, _, _) => {
-            place_regions.add_local(local, extract_region_id(region));
-            debug!("region: {:?}", region);
-        }
-        ty::TyKind::Tuple(substs) => {
-            for (i, ty) in substs.types().enumerate() {
-                match ty.kind() {
-                    ty::TyKind::Ref(region, _, _) => {
-                        place_regions.add(local, vec![i], extract_region_id(region))
-                    }
-                    _ => {
-                        debug!("does not contain regions: {:?}[{}]: {:?} {:?}", local, i, ty, ty.kind());
-                    }
-                }
-
-            }
-        }
-        _ => {
-            debug!("does not contain regions: {:?}: {:?} {:?}", local, ty, ty.kind());
-        }
-    }
-}
-
-pub fn load_place_regions(body: &mir::Body<'_>) -> io::Result<PlaceRegions> {
+pub fn load_place_regions<'tcx>(body: &mir::Body<'_>) -> io::Result<PlaceRegions<'tcx>> {
     trace!("[enter] load_place_regions()");
-    let mut place_regions = PlaceRegions::new();
-
-    for (local, local_decl) in body.local_decls.iter_enumerated() {
-        let ty = local_decl.ty;
-        debug!("local: {:?} {:?}", local, ty);
-        extract_region(&mut place_regions,  local, ty);
-    }
-
+    let place_regions = PlaceRegions::new(&body.local_decls);
     trace!("[exit] load_place_regions");
     Ok(place_regions)
 }

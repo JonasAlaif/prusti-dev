@@ -381,7 +381,7 @@ pub struct PoloniusInfo<'a, 'tcx: 'a> {
     pub(crate) loan_at_position: HashMap<mir::Location, facts::Loan>,
     pub(crate) call_loan_at_position: HashMap<mir::Location, facts::Loan>,
     pub(crate) call_magic_wands: HashMap<facts::Loan, mir::Local>,
-    pub place_regions: PlaceRegions,
+    pub place_regions: PlaceRegions<'tcx>,
     pub(crate) additional_facts: AdditionalFacts,
     /// Loop head → Vector of magic wands in that loop.
     pub(crate) loop_magic_wands: HashMap<mir::BasicBlock, Vec<LoopMagicWand>>,
@@ -495,8 +495,7 @@ fn add_fake_facts<'a, 'tcx: 'a>(
                 let mut lhs_regions = vec![];
                 for place in lhs_places.into_iter() {
                     if let Some(region) = place_regions
-                        .for_place(place)
-                        .map_err(|err| (err, location))? {
+                        .for_place(place) {
                         lhs_regions.push(region);
                     }
                 }
@@ -784,8 +783,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let mut return_regions = vec![];
         let return_span = mir.local_decls[mir::RETURN_PLACE].source_info.span;
         for place in mir::RETURN_PLACE.all_places(tcx, mir).into_iter() {
-            if let Some(region) = place_regions.for_place(place)
-                .map_err(|err| (err, return_span))? {
+            if let Some(region) = place_regions.for_place(place) {
                 return_regions.push(region);
             }
         }
@@ -1242,7 +1240,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         for stmt in assignments.into_iter() {
             let (lhs, _) = stmt.as_assign().unwrap_or_else(||
                 unreachable!("Borrow starts at statement {:?}", stmt));
-            if self.place_regions.for_place(lhs)? == Some(region) {
+            if self.place_regions.for_place(lhs) == Some(region) {
                 retained_assignments.push(stmt);
             }
         };
