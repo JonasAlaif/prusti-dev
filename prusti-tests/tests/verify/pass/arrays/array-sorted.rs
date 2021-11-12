@@ -1,17 +1,25 @@
 use prusti_contracts::*;
-
 fn main() {}
 
-// FIXME: predicate here
-#[pure]
-fn sorted_ish(a: &[i32; 4]) -> bool {
-    a[0] <= a[1]
-        && a[1] <= a[2]
-        && a[2] <= a[3]
+// ---- Prusti signature ----
+type Link = Option<Box<Node>>;
+struct Node(i32, Link);
+
+fn sll_copy(l: &Link) -> Link { ?? }
+
+
+// ---- SuSLik output ----
+{r :-> x           ** sll(x)}
+{r :-> y ** sll(y) ** sll(x)}
+void sll_copy (loc r) {
+  *r = 0;
 }
 
-fn do_it() {
-    let a = [0, 1, 2, 3];
-
-    assert!(sorted_ish(&a));
+// ---- Rust code ----
+fn sll_copy(l: &Link) -> Link {
+    None
 }
+
+
+// ---- How to add fn. spec? ----
+
