@@ -19,7 +19,7 @@ assert result.val_int <= old[pre](x.val_int) && result.val_int <= old[pre](y.val
 exhale acc(i32(result), write)
 
 // ---- SuSLik input ----
-{ true; result :-> 0 }
+{ true; result :-> a }
 void min2(int x, int y, loc result)
 { m <= x /\ m <= y; result :-> m }
 // Notes:
