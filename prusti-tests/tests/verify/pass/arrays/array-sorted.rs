@@ -23,18 +23,10 @@ fn sll_copy(l: &Link) -> Link {
 // ---- How to add fn. spec? ----
 #[pure]
 fn sll_eq(l: &Link, r: &Link) -> bool {
-    if let Some(l) = l {
-        if let Some(r) = r {
-            l.0 == r.0 && sll_eq(&l.1, &r.1)
-        } else {
-            false
-        }
-    } else {
-        if let Some(_) = r {
-            false
-        } else {
-            true
-        }
+    match (l, r) {
+      (Some(l), Some(r)) => l.0 == r.0 && sll_eq(&l.1, &r.1),
+      (None, None) => true,
+      _ => false
     }
 }
 #[ensures(sll_eq(l, &result))]
@@ -42,53 +34,56 @@ fn sll_copy(l: &Link) -> Link { ?? }
 
 // ---- A: Viper predicates ----
 // Encoding of Option (can be replaced by `| self == 0 =>` in SuSLik)
-predicate P_Link(self: Ref) {
-    acc(self.discriminant, write) && (0 <= self.discriminant && self.discriminant <= 1 && (acc(self.enum_Some, write) && (self.discriminant == 1 ==> acc(P_Some(self.enum_Some), write))))
+predicate Option(self: Ref) {
+    acc(self.discriminant, write) && (0 <= self.discriminant && self.discriminant <= 1 && (acc(self.enum_Some, write) && (self.discriminant == 1 ==> acc(Some(self.enum_Some), write))))
 }
-predicate P_Some(self: Ref) {
-    acc(self.f_0, write) && acc(P_BoxNode(self.f_0), write)
+predicate Some(self: Ref) {
+    acc(self.f_0, write) && acc(Box(self.f_0), write)
 }
 // Encoding of Box (pointer to heap allocation, again simply tells us that `self` is a `loc` in SuSLik)
-predicate P_BoxNode(self: Ref) {
-    acc(self.val_ref, write) && acc(P_Node(self.val_ref), write)
+predicate Box(self: Ref) {
+    acc(self.val_ref, write) && acc(Node(self.val_ref), write)
 }
 // The main predicate (to translate to SuSLik we need to layout the fields in memory)
-predicate P_Node(self: Ref) {
-    acc(self.f_0, write) && (acc(i32(self.f_0), write) && (acc(self.f_1, write) && acc(P_Link(self.f_1), write)))
+predicate Node(self: Ref) {
+    acc(self.f_0, write) && (acc(i32(self.f_0), write) && (acc(self.f_1, write) && acc(Option(self.f_1), write)))
 }
 // Ignore this for now; do not enforce the type of `f_0`
 predicate i32(self: Ref) {
   acc(self.val_int, write)
 }
 // ---- A: SuSLik predicates ----
-predicate P_Node(loc self) {
-| self == 0 => { emp }
-| not (self == 0) => { [self, 2] ** self :-> f_0 ** (self + 1) :-> f_1 ** P_Node(f_1) }
+predicate Link(loc box) {
+| box != 0 => { box :-> node ** Node(node) }
+| box == 0 => { emp }
+}
+predicate Node(loc self) {
+| true => { [self, 2] ** self :-> f0 ** self+1 :-> f1 ** Link(f1) }
 }
 
 // ---- B: Viper pure fn ----
-// Prusti uses Viper `domain`s to encode pure function argurments, but
+// Prusti uses Viper `domain`s to encode pure function arguments, but
 // I have "inlined" that representation (would require some 'slight?' modifications in Prusti):
 function sll_eq(l: Ref, r: Ref): Bool
-  requires acc(P_Link(l), read())
-  requires acc(P_Link(r), read())
+  requires acc(Option(l), read())
+  requires acc(Option(r), read())
 {
-  (unfolding acc(P_Link(l), read()) in (unfolding acc(P_Link(r), read()) in (l.discriminant == 1 ?
-    (r.discriminant == 1 ?
-      (unfolding acc(P_Some(l.enum_Some), read()) in
-        (unfolding acc(P_BoxNode(l.enum_Some.f_0), read()) in
-          (unfolding acc(P_Node(l.enum_Some.f_0.val_ref), read()) in
+  (unfolding acc(Option(l), read()) in (unfolding acc(Option(r), read()) in (l.dc == 1 ?
+    (r.dc == 1 ?
+      (unfolding acc(Some(l.enum_Some), read()) in
+        (unfolding acc(Box(l.enum_Some.f_0), read()) in
+          (unfolding acc(Node(l.enum_Some.f_0.val_ref), read()) in
             (unfolding acc(i32(l.enum_Some.f_0.val_ref.f_0), read()) in
-              (unfolding acc(P_Some(r.enum_Some), read()) in
-                (unfolding acc(P_BoxNode(r.enum_Some.f_0), read()) in
-                  (unfolding acc(P_Node(r.enum_Some.f_0.val_ref), read()) in
+              (unfolding acc(Some(r.enum_Some), read()) in
+                (unfolding acc(Box(r.enum_Some.f_0), read()) in
+                  (unfolding acc(Node(r.enum_Some.f_0.val_ref), read()) in
                     (unfolding acc(i32(r.enum_Some.f_0.val_ref.f_0), read()) in
                       (l.enum_Some.f_0.val_ref.f_0.val_int == r.enum_Some.f_0.val_ref.f_0.val_int) &&
                       ((l.enum_Some.f_0.val_ref.f_0.val_int == r.enum_Some.f_0.val_ref.f_0.val_int) ==> 
                         sll_eq(l.enum_Some.f_0.val_ref.f_1, r.enum_Some.f_0.val_ref.f_1))
         ))))))))
     : false)
-  : r.discriminant != 1)))
+  : r.dc != 1)))
 }
 // With `read()` defined as:
 function read(): Perm
@@ -96,10 +91,10 @@ function read(): Perm
   ensures result < write
 // ---- B: SuSLik pure fn ----
 // To translate the above directly we would need a construct of the form `pure_fn(); predicate()`:
-//  { result :-> a ** P_Node(l) }
+//  { result :-> a ** Node(l) }
 //  void sll_copy(loc l, loc result)
-//  { sll_eq(l, y); result :-> y ** P_Node(l) ** P_Node(y) }
-// Instead, we must combine `sll_eq` and `P_Node` into one predicate:
+//  { sll_eq(l, y); result :-> y ** Node(l) ** Node(y) }
+// Instead, we must combine `sll_eq` and `Node` into one predicate:
 predicate P_sll_eq(loc l, loc r) {
 | not (l == 0) => {
     not (r == 0) && l_f_0 == r_f_0;
@@ -111,10 +106,10 @@ predicate P_sll_eq(loc l, loc r) {
 }
 
 // ---- SuSLik input ----
-{ result :-> a ** P_Node(l) }
+{ result :-> a ** Node(l) }
 void sll_copy(loc l, loc result)
 { result :-> r ** P_sll_eq(l, r) }
-// Note: we do not use `l :-> x ** P_Node(x)` even though in Rust we have `l: &Link`
+// Note: we do not use `l :-> x ** Node(x)` even though in Rust we have `l: &Link`
 //       as SuSLik cannot "borrow" (`&`) to construct the correct form of the argument
 //       for the recursive call - instead, it would write to l:
 //          let x = *l;
@@ -172,4 +167,23 @@ fn sll_copy(l: &Link) -> Link {
         // *result = 0;
         None
     }
+}
+fn sll_copy(l: &Link) -> Link {
+  let lbox = *l; // Error
+  if let Some(lbox) == lbox {
+    let lnode = *lbox; // Error
+    let f0 = lnode.0;
+    let f1 = lnode.1;
+    *l = f1; // Error
+    let res = sll_copy(l);
+    let rbox = malloc(1); // ?
+    let rnode = malloc(2); // ?
+    *l = lbox; // Error
+    *rbox = rnode;
+    *(rnode + 1) = res;
+    *rnode = f0;
+    rbox
+  } else {
+    None
+  }
 }
