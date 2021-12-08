@@ -18,9 +18,8 @@ pub fn rewrite_mod(item_mod: &mut syn::ItemMod, path: &mut syn::Path) -> syn::Re
     }
 
     path.segments.push(syn::PathSegment { ident: item_mod.ident.clone(), arguments: syn::PathArguments::None });
-    let name_generator = NameGenerator::new();
-    item_mod.ident = syn::Ident::new(&name_generator.generate_mod_name(&item_mod.ident),
-                                    item_mod.span());
+    item_mod.ident = syn::Ident::new(&NameGenerator::generate_mod_name(&item_mod),
+                                    item_mod.ident.span());
 
     for item in item_mod.content.as_mut().unwrap().1.iter_mut() {
         match item {
@@ -208,16 +207,8 @@ fn rewrite_method_inputs(item_ty: &syn::Type, method: &mut ImplItemMethod) ->
 /// Generate an empty struct to be able to define impl blocks (in
 /// `rewrite_impl`) on it for its specification functions.
 pub fn generate_new_struct(item: &syn::ItemImpl) -> syn::Result<syn::ItemStruct> {
-    let name_generator = NameGenerator::new();
-    let struct_name = match name_generator.generate_struct_name(item) {
-        Ok(name) => name,
-        Err(msg) => return Err(syn::Error::new(
-            item.span(),
-            msg,
-        ))
-    };
-    let struct_ident = syn::Ident::new(&struct_name,
-                                       item.span());
+    let struct_name = NameGenerator::generate_struct_name(item)?;
+    let struct_ident = syn::Ident::new(&struct_name, item.span());
 
     let mut new_struct: syn::ItemStruct = parse_quote_spanned! {item.span()=>
         #[allow(non_camel_case_types)] struct #struct_ident {}

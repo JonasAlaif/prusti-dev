@@ -18,5 +18,6 @@ pub mod common;
 pub mod json;
 pub mod untyped;
 pub mod preparser;
+mod syn_to_name;
 
 pub use common::SpecType;

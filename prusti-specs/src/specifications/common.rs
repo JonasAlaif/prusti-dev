@@ -5,8 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use std::fmt::{Display, Debug};
-use uuid::Uuid;
+use std::fmt::{Formatter, Display, Debug};
+use crate::specifications::syn_to_name::{Name, IntoName};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// A specification type.
@@ -43,12 +43,10 @@ impl<'a> TryFrom<&'a str> for SpecType {
     }
 }
 
-#[derive(
-    Debug, Default, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize, PartialOrd, Ord,
-)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 /// A unique ID of the specification element such as entire precondition
 /// or postcondition.
-pub struct SpecificationId(Uuid);
+pub struct SpecificationId(u32);
 
 /// A reference to a procedure specification.
 #[derive(Debug, Clone, Copy)]
@@ -63,94 +61,56 @@ pub enum SpecIdRef {
 }
 
 impl Display for SpecificationId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0.to_simple().encode_lower(&mut Uuid::encode_buffer()),
-        )
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
-impl std::convert::TryFrom<String> for SpecificationId {
-    type Error = uuid::Error;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Uuid::parse_str(&value).map(Self)
-    }
-}
-
-impl SpecificationId {
-    pub fn dummy() -> Self {
-        Self(Uuid::nil())
-    }
-}
-
-pub(crate) struct SpecificationIdGenerator {}
-
-impl SpecificationIdGenerator {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-    pub(crate) fn generate(&mut self) -> SpecificationId {
-        SpecificationId(Uuid::new_v4())
-    }
-}
-
-#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 /// A unique ID of the Rust expression used in the specification.
-pub struct ExpressionId(u64);
+pub struct ExpressionId(SpecificationId, u32);
 
 impl Display for ExpressionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0,)
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}_{}", self.0, self.1)
     }
 }
 
 pub(crate) struct ExpressionIdGenerator {
-    last_id: u64,
+    spec: SpecificationId,
+    last_id: u32,
 }
 
 impl ExpressionIdGenerator {
-    pub(crate) fn new() -> Self {
-        Self { last_id: 100 }
+    pub(crate) fn new(spec: SpecificationId) -> Self {
+        Self { spec, last_id: 0 }
     }
     pub(crate) fn generate(&mut self) -> ExpressionId {
         self.last_id += 1;
-        ExpressionId(self.last_id)
+        ExpressionId(self.spec, self.last_id)
     }
 }
 
+/*
 impl From<ExpressionId> for u64 {
     fn from(id: ExpressionId) -> Self {
         id.0
     }
 }
+*/
 
-pub(crate) struct NameGenerator {}
-
+pub(crate) struct NameGenerator;
 impl NameGenerator {
-    pub(crate) fn new() -> Self { Self { } }
-    pub(crate) fn generate_struct_name(&self, item: &syn::ItemImpl) -> Result<String, String> {
-        let mut path_str: String = String::new();
-
-        match &*item.self_ty {
-            syn::Type::Path (ty_path) => {
-                for seg in ty_path.path.segments.iter() {
-                    path_str.push_str(&seg.ident.to_string());
-                }
-            }
-            _ => {
-                return Err("expected a path".to_string());
-            }
-        };
-        let uuid = Uuid::new_v4().to_simple();
-
-        Ok(format!("PrustiStruct{}_{}", path_str, uuid))
+    pub(crate) fn generate_struct_name(item_impl: &syn::ItemImpl) -> Name {
+        Ok(format!("Prusti__impl{}__{}{}",
+            item_impl.generics.into_name()?,
+            item_impl.trait_.into_name()?,
+            item_impl.self_ty.into_name()?,
+        ))
     }
 
-    pub(crate) fn generate_mod_name(&self, ident: &syn::Ident) -> String {
-        let uuid = Uuid::new_v4().to_simple();
-        format!("{}_{}", ident, uuid)
+    pub(crate) fn generate_mod_name(item_mod: &syn::ItemMod) -> String {
+        format!("Prusti__mod__{}", item_mod.ident.to_string())
     }
 }
 
