@@ -4,35 +4,28 @@
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
         <title>List of Configuration Flags - Prusti dev guide</title>
-                
-
         <!-- Custom HTML head -->
-        
-
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
-                <link rel="icon" href="../favicon.svg">
-                        <link rel="shortcut icon" href="../favicon.png">
-                <link rel="stylesheet" href="../css/variables.css">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
         <link rel="stylesheet" href="../css/general.css">
         <link rel="stylesheet" href="../css/chrome.css">
-                <link rel="stylesheet" href="../css/print.css" media="print">
-        
+        <link rel="stylesheet" href="../css/print.css" media="print">
         <!-- Fonts -->
         <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
-                <link rel="stylesheet" href="../fonts/fonts.css">
-        
+        <link rel="stylesheet" href="../fonts/fonts.css">
         <!-- Highlight.js Stylesheets -->
         <link rel="stylesheet" href="../highlight.css">
         <link rel="stylesheet" href="../tomorrow-night.css">
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
-        
-            </head>
+    </head>
     <body>
         <!-- Provide site root to javascript -->
         <script type="text/javascript">
@@ -82,14 +75,14 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="../intro.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../config/summary.html"><strong aria-hidden="true">2.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../config/providing.html"><strong aria-hidden="true">2.1.</strong> Providing Flags</a></li><li class="chapter-item expanded "><a href="../config/flags.html" class="active"><strong aria-hidden="true">2.2.</strong> List of Configuration Flags</a></li></ol></li><li class="chapter-item expanded "><a href="../pipeline/summary.html"><strong aria-hidden="true">3.</strong> Verification Pipeline</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../pipeline/binary.html"><strong aria-hidden="true">3.1.</strong> Binary stage</a></li><li class="chapter-item expanded "><a href="../pipeline/rust.html"><strong aria-hidden="true">3.2.</strong> Rust compilation stage</a></li><li class="chapter-item expanded "><a href="../pipeline/prusti.html"><strong aria-hidden="true">3.3.</strong> Prusti processing stage</a></li><li class="chapter-item expanded "><a href="../pipeline/viper.html"><strong aria-hidden="true">3.4.</strong> Viper verification stage</a></li><li class="chapter-item expanded "><a href="../pipeline/report.html"><strong aria-hidden="true">3.5.</strong> Reporting stage</a></li></ol></li><li class="chapter-item expanded "><a href="../macros.html"><strong aria-hidden="true">4.</strong> Macros</a></li><li class="chapter-item expanded "><a href="../encoding/summary.html"><strong aria-hidden="true">5.</strong> Viper Encoding</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../encoding/types.html"><strong aria-hidden="true">5.1.</strong> Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../encoding/types-heap.html"><strong aria-hidden="true">5.1.1.</strong> Heap-based type encoding</a></li><li class="chapter-item expanded "><a href="../encoding/types-snap.html"><strong aria-hidden="true">5.1.2.</strong> Snapshot-based type encoding</a></li></ol></li><li class="chapter-item expanded "><a href="../encoding/pure.html"><strong aria-hidden="true">5.2.</strong> Pure function encoding</a></li><li class="chapter-item expanded "><a href="../encoding/mangling.html"><strong aria-hidden="true">5.3.</strong> Name mangling</a></li></ol></li><li class="chapter-item expanded "><a href="../layout.html"><strong aria-hidden="true">6.</strong> Repository Layout</a></li><li class="chapter-item expanded "><a href="../development/summary.html"><strong aria-hidden="true">7.</strong> Development</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../development/setup.html"><strong aria-hidden="true">7.1.</strong> Setup</a></li><li class="chapter-item expanded "><a href="../development/build.html"><strong aria-hidden="true">7.2.</strong> Building</a></li><li class="chapter-item expanded "><a href="../development/tests.html"><strong aria-hidden="true">7.3.</strong> Tests</a></li><li class="chapter-item expanded "><a href="../development/ide.html"><strong aria-hidden="true">7.4.</strong> IDE integration</a></li><li class="chapter-item expanded "><a href="../development/debug.html"><strong aria-hidden="true">7.5.</strong> Debugging</a></li></ol></li></ol>            </div>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../intro.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../config/summary.html"><strong aria-hidden="true">2.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../config/providing.html"><strong aria-hidden="true">2.1.</strong> Providing Flags</a></li><li class="chapter-item expanded "><a href="../config/flags.html" class="active"><strong aria-hidden="true">2.2.</strong> List of Configuration Flags</a></li></ol></li><li class="chapter-item expanded "><a href="../pipeline/summary.html"><strong aria-hidden="true">3.</strong> Verification Pipeline</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../pipeline/binary.html"><strong aria-hidden="true">3.1.</strong> Binary stage</a></li><li class="chapter-item expanded "><a href="../pipeline/rust.html"><strong aria-hidden="true">3.2.</strong> Rust compilation stage</a></li><li class="chapter-item expanded "><a href="../pipeline/prusti.html"><strong aria-hidden="true">3.3.</strong> Prusti processing stage</a></li><li class="chapter-item expanded "><a href="../pipeline/viper.html"><strong aria-hidden="true">3.4.</strong> Viper verification stage</a></li><li class="chapter-item expanded "><a href="../pipeline/report.html"><strong aria-hidden="true">3.5.</strong> Reporting stage</a></li></ol></li><li class="chapter-item expanded "><a href="../macros.html"><strong aria-hidden="true">4.</strong> Macros</a></li><li class="chapter-item expanded "><a href="../encoding/summary.html"><strong aria-hidden="true">5.</strong> Viper Encoding</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../encoding/types.html"><strong aria-hidden="true">5.1.</strong> Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../encoding/types-heap.html"><strong aria-hidden="true">5.1.1.</strong> Heap-based type encoding</a></li><li class="chapter-item expanded "><a href="../encoding/types-snap.html"><strong aria-hidden="true">5.1.2.</strong> Snapshot-based type encoding</a></li></ol></li><li class="chapter-item expanded "><a href="../encoding/pure.html"><strong aria-hidden="true">5.2.</strong> Pure function encoding</a></li><li class="chapter-item expanded "><a href="../encoding/mangling.html"><strong aria-hidden="true">5.3.</strong> Name mangling</a></li></ol></li><li class="chapter-item expanded "><a href="../layout.html"><strong aria-hidden="true">6.</strong> Repository Layout</a></li><li class="chapter-item expanded "><a href="../development/summary.html"><strong aria-hidden="true">7.</strong> Development</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../development/setup.html"><strong aria-hidden="true">7.1.</strong> Setup</a></li><li class="chapter-item expanded "><a href="../development/build.html"><strong aria-hidden="true">7.2.</strong> Building</a></li><li class="chapter-item expanded "><a href="../development/tests.html"><strong aria-hidden="true">7.3.</strong> Tests</a></li><li class="chapter-item expanded "><a href="../development/ide.html"><strong aria-hidden="true">7.4.</strong> IDE integration</a></li><li class="chapter-item expanded "><a href="../development/debug.html"><strong aria-hidden="true">7.5.</strong> Debugging</a></li></ol></li></ol>
+            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
-                
                 <div id="menu-bar-hover-placeholder"></div>
                 <div id="menu-bar" class="menu-bar sticky bordered">
                     <div class="left-buttons">
@@ -106,22 +99,21 @@
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
                         </ul>
-                                                <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
                             <i class="fa fa-search"></i>
                         </button>
-                                            </div>
+                    </div>
 
                     <h1 class="menu-title">Prusti dev guide</h1>
 
                     <div class="right-buttons">
-                                                <a href="../print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                                                                        
                     </div>
                 </div>
 
-                                <div id="search-wrapper" class="hidden">
+                <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
                         <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
@@ -131,7 +123,6 @@
                         </ul>
                     </div>
                 </div>
-                
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
                 <script type="text/javascript">
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
@@ -147,6 +138,7 @@
 <table><thead><tr><th>Name</th><th>Rust type</th><th>Default value</th></tr></thead><tbody>
 <tr><td><a href="#assert_timeout"><code>ASSERT_TIMEOUT</code></a></td><td><code>u64</code></td><td><code>10_000</code></td></tr>
 <tr><td><a href="#be_rustc"><code>BE_RUSTC</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
+<tr><td><a href="#cache_path"><code>CACHE_PATH</code></a></td><td><code>String</code></td><td><code>&quot;&quot;</code></td></tr>
 <tr><td><a href="#check_overflows"><code>CHECK_OVERFLOWS</code></a></td><td><code>bool</code></td><td><code>true</code></td></tr>
 <tr><td><a href="#check_foldunfold_state"><code>CHECK_FOLDUNFOLD_STATE</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#check_panics"><code>CHECK_PANICS</code></a></td><td><code>bool</code></td><td><code>true</code></td></tr>
@@ -160,6 +152,7 @@
 <tr><td><a href="#dump_path_ctxt_in_debug_info"><code>DUMP_PATH_CTXT_IN_DEBUG_INFO</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#dump_reborrowing_dag_in_debug_info"><code>DUMP_REBORROWING_DAG_IN_DEBUG_INFO</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#dump_viper_program"><code>DUMP_VIPER_PROGRAM</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
+<tr><td><a href="#enable_cache"><code>ENABLE_CACHE</code></a></td><td><code>bool</code></td><td><code>true</code></td></tr>
 <tr><td><a href="#enable_verify_only_basic_block_path"><code>ENABLE_VERIFY_ONLY_BASIC_BLOCK_PATH</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#encode_unsigned_num_constraint"><code>ENCODE_UNSIGNED_NUM_CONSTRAINT</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#extra_jvm_args"><code>EXTRA_JVM_ARGS</code></a></td><td><code>Vec&lt;String&gt;</code></td><td><code>vec![]</code></td></tr>
@@ -169,11 +162,12 @@
 <tr><td><a href="#hide_uuids"><code>HIDE_UUIDS</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#json_communication"><code>JSON_COMMUNICATION</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#log"><code>LOG</code></a></td><td><code>Option&lt;String&gt;</code></td><td><code>None</code></td></tr>
-<tr><td><a href="#log_dir"><code>LOG_DIR</code></a></td><td><code>String</code></td><td><code>&quot;./log/&quot;</code></td></tr>
+<tr><td><a href="#log_dir"><code>LOG_DIR</code></a></td><td><code>String</code></td><td><code>&quot;log&quot;</code></td></tr>
 <tr><td><a href="#log_style"><code>LOG_STYLE</code></a></td><td><code>String</code></td><td><code>&quot;auto&quot;</code></td></tr>
 <tr><td><a href="#no_verify"><code>NO_VERIFY</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#print_collected_verfication_items"><code>PRINT_COLLECTED_VERFICATION_ITEMS</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#print_desugared_specs"><code>PRINT_DESUGARED_SPECS</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
+<tr><td><a href="#print_hash"><code>PRINT_HASH</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#print_typeckd_specs"><code>PRINT_TYPECKD_SPECS</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#quiet"><code>QUIET</code></a></td><td><code>bool</code></td><td><code>false</code></td></tr>
 <tr><td><a href="#server_address"><code>SERVER_ADDRESS</code></a></td><td><code>Option&lt;String&gt;</code></td><td><code>None</code></td></tr>
@@ -190,6 +184,8 @@
 <p>Maximum time (in milliseconds) for the verifier to spend on a single assertion. Set to <code>0</code> to disable timeout. Maps to the verifier command-line argument <code>--assertTimeout</code>.</p>
 <h2 id="be_rustc"><a class="header" href="#be_rustc"><code>BE_RUSTC</code></a></h2>
 <p>When enabled, Prusti will behave like <code>rustc</code>.</p>
+<h2 id="cache_path"><a class="header" href="#cache_path"><code>CACHE_PATH</code></a></h2>
+<p>Path to a cache file, where verification cache will be loaded from and saved to. The default empty string disables saving any cache to disk. A path to a file which does not yet exist will result in using an empty cache, but then creating and saving to that location on exit.</p>
 <h2 id="check_overflows"><a class="header" href="#check_overflows"><code>CHECK_OVERFLOWS</code></a></h2>
 <p>When enabled, binary operations and numeric casts will be checked for overflows. See <a href="../encoding/types-heap.html#i-u-char">integer type encoding</a>.</p>
 <h2 id="check_foldunfold_state"><a class="header" href="#check_foldunfold_state"><code>CHECK_FOLDUNFOLD_STATE</code></a></h2>
@@ -217,6 +213,8 @@
 <p>When enabled, reborrowing DAGs will be output in debug files.</p>
 <h2 id="dump_viper_program"><a class="header" href="#dump_viper_program"><code>DUMP_VIPER_PROGRAM</code></a></h2>
 <p>When enabled, the encoded Viper program will be output.</p>
+<h2 id="enable_cache"><a class="header" href="#enable_cache"><code>ENABLE_CACHE</code></a></h2>
+<p>Controls if verification requests (to verify individual <code>fn</code>s) are cached to improve future verification. By default the cache is only saved in memory (of the <code>prusti-server</code> if enabled). For long-running verification projects use <a href="#cache_path"><code>CACHE_PATH</code></a> to save to disk.</p>
 <h2 id="enable_verify_only_basic_block_path"><a class="header" href="#enable_verify_only_basic_block_path"><code>ENABLE_VERIFY_ONLY_BASIC_BLOCK_PATH</code></a></h2>
 <p>When enabled, only the path given in <a href="#verify_only_basic_block_path"><code>VERIFY_ONLY_BASIC_BLOCK_PATH</code></a> will be verified.</p>
 <p><strong>Note:</strong> This flag is only for debugging Prusti.</p>
@@ -244,6 +242,8 @@
 <p>When enabled, verification is skipped altogether.</p>
 <h2 id="print_desugared_specs"><a class="header" href="#print_desugared_specs"><code>PRINT_DESUGARED_SPECS</code></a></h2>
 <p>When enabled, prints the AST with desugared specifications.</p>
+<h2 id="print_hash"><a class="header" href="#print_hash"><code>PRINT_HASH</code></a></h2>
+<p>A debugging option, which, when enabled, prints the hash of a verification request (the hash is used for caching). This is instead of performing verification — this option is similar to <code>NO_VERIFY</code>, except that this flag stops the verification process at a later stage.</p>
 <h2 id="print_typeckd_specs"><a class="header" href="#print_typeckd_specs"><code>PRINT_TYPECKD_SPECS</code></a></h2>
 <p>When enabled, prints the type-checked specifications.</p>
 <h2 id="print_collected_verfication_items"><a class="header" href="#print_collected_verfication_items"><code>PRINT_COLLECTED_VERFICATION_ITEMS</code></a></h2>
@@ -281,49 +281,38 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                                                    <a rel="prev" href="../config/providing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../config/providing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                        
-                                                    <a rel="next" href="../pipeline/summary.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="../pipeline/summary.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
-                        
                         <div style="clear: both"></div>
                     </nav>
                 </div>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                                    <a rel="prev" href="../config/providing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../config/providing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                
-                                    <a rel="next" href="../pipeline/summary.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="../pipeline/summary.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
-                            </nav>
+            </nav>
 
         </div>
 
-        
-        
-        
-                <script type="text/javascript">
+        <script type="text/javascript">
             window.playground_copyable = true;
         </script>
-        
-        
-                <script src="../elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="../mark.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="../searcher.js" type="text/javascript" charset="utf-8"></script>
-        
         <script src="../clipboard.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="../highlight.js" type="text/javascript" charset="utf-8"></script>
         <script src="../book.js" type="text/javascript" charset="utf-8"></script>
 
         <!-- Custom JS scripts -->
-        
-        
     </body>
 </html>

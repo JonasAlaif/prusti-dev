@@ -1,1 +1,0 @@
-initSidebarItems({"fn":[["ws2","Creates a Websocket Filter."]],"struct":[["Message","A WebSocket message."],["WebSocket","A websocket `Stream` and `Sink`, provided to `ws` filters."],["Ws2","Extracted by the `ws2` filter, and used to finish an upgrade."]]});

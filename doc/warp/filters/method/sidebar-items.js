@@ -1,1 +1,0 @@
-initSidebarItems({"fn":[["method","Extract the `Method` from the request."]],"mod":[["v2","HTTP Method Filters"]]});

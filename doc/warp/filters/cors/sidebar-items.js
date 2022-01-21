@@ -1,1 +1,0 @@
-initSidebarItems({"fn":[["cors","Create a wrapping filter that exposes CORS behavior for a wrapped filter."]],"struct":[["Cors","A wrapping filter constructed via `warp::cors()`."],["CorsForbidden","An error used to reject requests that are forbidden by a `cors` filter."]]});
