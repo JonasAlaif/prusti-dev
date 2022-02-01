@@ -214,7 +214,7 @@
 <h2 id="dump_viper_program"><a class="header" href="#dump_viper_program"><code>DUMP_VIPER_PROGRAM</code></a></h2>
 <p>When enabled, the encoded Viper program will be output.</p>
 <h2 id="enable_cache"><a class="header" href="#enable_cache"><code>ENABLE_CACHE</code></a></h2>
-<p>Controls if verification requests (to verify individual <code>fn</code>s) are cached to improve future verification. By default the cache is only saved in memory (of the <code>prusti-server</code> if enabled). For long-running verification projects use <a href="#cache_path"><code>CACHE_PATH</code></a> to save to disk.</p>
+<p>When enabled, verification requests (to verify individual <code>fn</code>s) are cached to improve future verification. By default the cache is only saved in memory (of the <code>prusti-server</code> if enabled). For long-running verification projects use <a href="#cache_path"><code>CACHE_PATH</code></a> to save to disk.</p>
 <h2 id="enable_verify_only_basic_block_path"><a class="header" href="#enable_verify_only_basic_block_path"><code>ENABLE_VERIFY_ONLY_BASIC_BLOCK_PATH</code></a></h2>
 <p>When enabled, only the path given in <a href="#verify_only_basic_block_path"><code>VERIFY_ONLY_BASIC_BLOCK_PATH</code></a> will be verified.</p>
 <p><strong>Note:</strong> This flag is only for debugging Prusti.</p>
@@ -243,7 +243,7 @@
 <h2 id="print_desugared_specs"><a class="header" href="#print_desugared_specs"><code>PRINT_DESUGARED_SPECS</code></a></h2>
 <p>When enabled, prints the AST with desugared specifications.</p>
 <h2 id="print_hash"><a class="header" href="#print_hash"><code>PRINT_HASH</code></a></h2>
-<p>A debugging option, which, when enabled, prints the hash of a verification request (the hash is used for caching). This is instead of performing verification — this option is similar to <code>NO_VERIFY</code>, except that this flag stops the verification process at a later stage.</p>
+<p>When enabled, prints the hash of a verification request (the hash is used for caching). This is a debugging option which does not perform verification — it is similar to <code>NO_VERIFY</code>, except that this flag stops the verification process at a later stage.</p>
 <h2 id="print_typeckd_specs"><a class="header" href="#print_typeckd_specs"><code>PRINT_TYPECKD_SPECS</code></a></h2>
 <p>When enabled, prints the type-checked specifications.</p>
 <h2 id="print_collected_verfication_items"><a class="header" href="#print_collected_verfication_items"><code>PRINT_COLLECTED_VERFICATION_ITEMS</code></a></h2>
