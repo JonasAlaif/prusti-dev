@@ -123,10 +123,43 @@ impl AstRewriter {
         };
 
         spec_item.sig.generics = item.sig().generics.clone();
+        //Results in warnings:
+        // for gp in &mut spec_item.sig.generics.params {
+        //     if let syn::GenericParam::Lifetime(syn::LifetimeDef { lifetime, bounds, .. }) = gp {
+        //         if !bounds.iter().any(|l| {
+        //             println!("{}", l.ident.to_string());
+        //             l.ident.to_string() == "static"
+        //         }) {
+        //             bounds.push(syn::Lifetime::new("'static", lifetime.span()))
+        //         }
+        //     }
+        // }
+        spec_item.sig.generics.params = spec_item.sig.generics.params.into_iter().filter(
+            |gp| !matches!(gp, syn::GenericParam::Lifetime(..))
+        ).collect();
+        spec_item.sig.generics.where_clause = spec_item.sig.generics.where_clause.map(
+            |mut wc| {
+                wc.predicates = wc.predicates.into_iter().filter(
+                    |wp| !matches!(wp, syn::WherePredicate::Lifetime(..))
+                ).collect();
+                wc
+            }
+        );
+        struct LifetimeReplace;
+        impl syn::visit_mut::VisitMut for LifetimeReplace {
+            fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
+                node.lifetime = Some(syn::Lifetime::new("'static", node.span()));
+                syn::visit_mut::visit_type_reference_mut(self, node);
+            }
+        }
         spec_item.sig.inputs = item.sig().inputs.clone();
+        spec_item.sig.inputs.iter_mut().for_each(
+            |fa| syn::visit_mut::visit_fn_arg_mut(&mut LifetimeReplace, fa)
+        );
         match spec_type {
             SpecItemType::Postcondition | SpecItemType::Pledge => {
-                let fn_arg = self.generate_result_arg(item);
+                let mut fn_arg = self.generate_result_arg(item);
+                syn::visit_mut::visit_fn_arg_mut(&mut LifetimeReplace, &mut fn_arg);
                 spec_item.sig.inputs.push(fn_arg);
             },
             _ => (),

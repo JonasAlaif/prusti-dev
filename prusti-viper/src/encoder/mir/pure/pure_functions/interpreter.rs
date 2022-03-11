@@ -448,7 +448,7 @@ impl<'p, 'v: 'p, 'tcx: 'v> BackwardMirInterpreter<'tcx>
                             .with_span(span)?;
 
                         match full_func_proc_name {
-                            "prusti_contracts::PrustiFunctions::old" |
+                            "prusti_contracts::PrustiOld::old" |
                             "prusti_contracts::old" => {
                                 trace!("Encoding old expression {:?}", args[0]);
                                 assert_eq!(args.len(), 1);
@@ -465,7 +465,7 @@ impl<'p, 'v: 'p, 'tcx: 'v> BackwardMirInterpreter<'tcx>
                                 state
                             }
 
-                            "prusti_contracts::PrustiFunctions::before_expiry" |
+                            "prusti_contracts::PrustiBeforeExpiry::before_expiry" |
                             "prusti_contracts::before_expiry" => {
                                 trace!("Encoding before_expiry expression {:?}", args[0]);
                                 assert_eq!(args.len(), 1);

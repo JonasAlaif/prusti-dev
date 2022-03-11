@@ -86,22 +86,29 @@ mod private {
     pub use prusti_contracts_internal::predicate;
 }
 
-pub trait PrustiFunctions<'a, T>: core::borrow::BorrowMut<T> {
-    fn before_expiry(self) -> &'a T;
-    fn old(self) -> &'a T;
+pub trait PrustiBeforeExpiry<T>: core::borrow::Borrow<T> {
+    fn before_expiry(self) -> &'static T;
 }
-impl<'a, T> PrustiFunctions<'a, T> for &'a mut T {
+impl<T> PrustiBeforeExpiry<T> for &'static T {
     /// This function is used to evaluate an expression in the context just
     /// before the borrows expires.
-    fn before_expiry(self) -> &'a T { self }
-
-    /// This function is used to evaluate an expression in the “old”
-    /// context, that is at the beginning of the method call.
-    fn old(self) -> &'a T { self }
+    fn before_expiry(self) -> &'static T { self }
+}
+impl<T> PrustiBeforeExpiry<T> for &'static mut T {
+    fn before_expiry(self) -> &'static T { self }
 }
 /// Same as above, so that both `old(x)` and `x.old()` can be used
-pub fn before_expiry<T>(arg: &mut T) -> &T { arg }
-pub fn old<T>(arg: &mut T) -> &T { arg }
+pub fn before_expiry<T>(arg: &'static T) -> &'static T { arg }
+
+pub trait PrustiOld<T>: core::borrow::BorrowMut<T> {
+    fn old(self) -> &'static T;
+}
+impl<T> PrustiOld<T> for &'static mut T {
+    /// This function is used to evaluate an expression in the “old”
+    /// context, that is at the beginning of the method call.
+    fn old(self) -> &'static T { self }
+}
+pub fn old<T>(arg: &'static mut T) -> &'static T { arg }
 
 pub fn forall<T, F>(_trigger_set: T, _closure: F) -> bool {
     true
