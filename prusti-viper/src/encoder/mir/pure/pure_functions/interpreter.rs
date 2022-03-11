@@ -448,6 +448,7 @@ impl<'p, 'v: 'p, 'tcx: 'v> BackwardMirInterpreter<'tcx>
                             .with_span(span)?;
 
                         match full_func_proc_name {
+                            "prusti_contracts::PrustiFunctions::old" |
                             "prusti_contracts::old" => {
                                 trace!("Encoding old expression {:?}", args[0]);
                                 assert_eq!(args.len(), 1);
@@ -459,10 +460,12 @@ impl<'p, 'v: 'p, 'tcx: 'v> BackwardMirInterpreter<'tcx>
                                     PRECONDITION_LABEL,
                                 );
                                 let mut state = states[target_block].clone();
-                                state.substitute_value(&encoded_lhs, encoded_rhs);
+                                let lhs_with_fields = encoded_lhs.copy_fields(&encoded_rhs);
+                                state.substitute_value(&lhs_with_fields, encoded_rhs);
                                 state
                             }
 
+                            "prusti_contracts::PrustiFunctions::before_expiry" |
                             "prusti_contracts::before_expiry" => {
                                 trace!("Encoding before_expiry expression {:?}", args[0]);
                                 assert_eq!(args.len(), 1);
@@ -470,7 +473,8 @@ impl<'p, 'v: 'p, 'tcx: 'v> BackwardMirInterpreter<'tcx>
                                     .mir_encoder
                                     .encode_old_expr(encoded_args[0].clone(), WAND_LHS_LABEL);
                                 let mut state = states[target_block].clone();
-                                state.substitute_value(&encoded_lhs, encoded_rhs);
+                                let lhs_with_fields = encoded_lhs.copy_fields(&encoded_rhs);
+                                state.substitute_value(&lhs_with_fields, encoded_rhs);
                                 state
                             }
 

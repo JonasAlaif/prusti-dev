@@ -433,10 +433,12 @@ impl<'p, 'v: 'p, 'tcx: 'v> ExpressionBackwardInterpreter<'p, 'v, 'tcx> {
                     .collect::<Result<_, _>>()
                     .with_span(span)?;
                 match full_func_proc_name {
+                    "prusti_contracts::PrustiFunctions::old" |
                     "prusti_contracts::old" => {
                         unimplemented!();
                         // self.encode_call_old()?
                     }
+                    "prusti_contracts::PrustiFunctions::before_expiry" |
                     "prusti_contracts::before_expiry" => {
                         // self.encode_call_before_expiry()?
                         unimplemented!();

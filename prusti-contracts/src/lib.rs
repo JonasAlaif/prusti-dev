@@ -86,18 +86,22 @@ mod private {
     pub use prusti_contracts_internal::predicate;
 }
 
-
-/// This function is used to evaluate an expression in the context just
-/// before the borrows expires.
-pub fn before_expiry<T>(arg: T) -> T {
-    arg
+pub trait PrustiFunctions<'a, T>: core::borrow::BorrowMut<T> {
+    fn before_expiry(self) -> &'a T;
+    fn old(self) -> &'a T;
 }
+impl<'a, T> PrustiFunctions<'a, T> for &'a mut T {
+    /// This function is used to evaluate an expression in the context just
+    /// before the borrows expires.
+    fn before_expiry(self) -> &'a T { self }
 
-/// This function is used to evaluate an expression in the “old”
-/// context, that is at the beginning of the method call.
-pub fn old<T>(arg: T) -> T {
-    arg
+    /// This function is used to evaluate an expression in the “old”
+    /// context, that is at the beginning of the method call.
+    fn old(self) -> &'a T { self }
 }
+/// Same as above, so that both `old(x)` and `x.old()` can be used
+pub fn before_expiry<T>(arg: &mut T) -> &T { arg }
+pub fn old<T>(arg: &mut T) -> &T { arg }
 
 pub fn forall<T, F>(_trigger_set: T, _closure: F) -> bool {
     true

@@ -840,6 +840,23 @@ impl Expr {
     }
 
     #[must_use]
+    pub fn copy_fields(&self, other: &Expr) -> Self {
+        match other {
+            Expr::Unfolding(Unfolding { base, .. }) |
+            Expr::SnapApp(SnapApp { base, .. }) |
+            Expr::LabelledOld(LabelledOld { base, .. }) => self.copy_fields(base),
+            // TODO: think about if other `Expr` with `base` should be traversed?
+            Expr::Field(FieldExpr { box base, field, position }) =>
+                Expr::Field(FieldExpr {
+                    base: Box::new(self.copy_fields(base)),
+                    field: field.clone(),
+                    position: position.clone(),
+                }),
+            _ => self.clone(),
+        }
+    }
+
+    #[must_use]
     pub fn addr_of(self) -> Self {
         let addr_type = self.get_type().clone();
         Expr::AddrOf(AddrOf {
